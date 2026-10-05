@@ -27,6 +27,11 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
   const [mensaje, setMensaje] = useState(null);
   const [guardando, setGuardando] = useState(false);
 
+  // Recorrido e impresion de movimientos
+  const [indiceMovimiento, setIndiceMovimiento] = useState(0);
+  const [movimientoAImprimir, setMovimientoAImprimir] = useState(null);
+  const movimientoRefs = useRef([]);
+
   const original = {
     nombre: cliente.nombre || '',
     cuit: cliente.cuit || '',
@@ -57,6 +62,25 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
   useEffect(() => {
     if (mensaje) { const t = setTimeout(() => setMensaje(null), 4000); return () => clearTimeout(t); }
   }, [mensaje]);
+
+  // Mantener indice seleccionado dentro del rango
+  useEffect(() => {
+    if (historial.length > 0) {
+      setIndiceMovimiento(prev => (prev >= 0 && prev < historial.length ? prev : 0));
+    } else {
+      setIndiceMovimiento(-1);
+    }
+  }, [historial]);
+
+  // Auto-scroll al movimiento seleccionado
+  useEffect(() => {
+    if (indiceMovimiento >= 0 && movimientoRefs.current[indiceMovimiento]) {
+      movimientoRefs.current[indiceMovimiento].scrollIntoView({
+        block: 'nearest',
+        behavior: 'smooth',
+      });
+    }
+  }, [indiceMovimiento]);
 
   const cambiar = (campo) => (e) => setBorrador(p => ({ ...p, [campo]: e.target.value }));
 
@@ -100,6 +124,52 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
     devolverFoco();
   };
 
+  const confirmarImpresion = async () => {
+    if (!movimientoAImprimir) return;
+    const mov = movimientoAImprimir;
+    setMovimientoAImprimir(null);
+
+    const items = leerDetalle(mov);
+    const listaItems = items.length > 0 ? items.map(it => ({
+      nombre: it.nombre || 'Artículo',
+      cantidad: Number(it.cantidad) || 1,
+      precio: Number(it.precioUnitario || (it.subtotal / (it.cantidad || 1))),
+      subtotal: Number(it.subtotal || 0),
+    })) : [{
+      nombre: mov.concepto || (mov.tipo === 'cargo' ? 'Compra fiada' : 'Pago recibido'),
+      cantidad: 1,
+      precio: parseFloat(mov.monto || 0),
+      subtotal: parseFloat(mov.monto || 0),
+    }];
+
+    const datosTicket = {
+      nombreNegocio: 'EL RINCON DEL GATO',
+      direccion: `Cliente: ${cliente.nombre}`,
+      fecha: formatearFechaHora(mov.creado_en),
+      numeroVenta: mov.id,
+      cajero: mov.tipo === 'cargo' ? 'Cargo Cta Cte' : 'Pago Cta Cte',
+      items: listaItems,
+      subtotal: parseFloat(mov.monto || 0),
+      recargo: 0,
+      total: parseFloat(mov.monto || 0),
+      medioPago: 'Cuenta Corriente',
+    };
+
+    try {
+      const res = await window.api.hardware.imprimirTicket(datosTicket);
+      if (res && res.exito === false) {
+        setMensaje({ tipo: 'error', texto: res.error || 'No se pudo imprimir el comprobante' });
+      } else {
+        setMensaje({ tipo: 'exito', texto: 'Comprobante enviado a la impresora' });
+      }
+    } catch (err) {
+      console.error('Error al imprimir comprobante:', err);
+      setMensaje({ tipo: 'error', texto: 'Error de comunicación con la impresora' });
+    } finally {
+      devolverFoco();
+    }
+  };
+
   // Teclado de la ficha
   useEffect(() => {
     const manejar = (e) => {
@@ -118,7 +188,7 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
       if (enCampo) {
         if (e.key === 'Enter') {
           e.preventDefault();
-          const campos = Array.from(contenedorRef.current.querySelectorAll('[data-campo]'));
+          const campos = Array.from(document.querySelectorAll('[data-campo]'));
           const i = campos.indexOf(el);
           if (i >= 0 && i < campos.length - 1) campos[i + 1].focus();
           else if (hayCambios) setConfirmacion('guardar');
@@ -127,17 +197,44 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
         return;
       }
 
-      if (e.key === 'Enter' && el?.tagName !== 'BUTTON') {
+      if (e.key === 'F3') {
         e.preventDefault();
         setModalPago(true);
-      } else if (e.key === 'Delete') {
+        return;
+      }
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (historial.length > 0) {
+          setIndiceMovimiento(idx => Math.min(idx + 1, historial.length - 1));
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (historial.length > 0) {
+          setIndiceMovimiento(idx => Math.max(idx - 1, 0));
+        }
+        return;
+      }
+
+      if (e.key === 'Enter' && el?.tagName !== 'BUTTON') {
+        e.preventDefault();
+        if (historial.length > 0 && indiceMovimiento >= 0 && indiceMovimiento < historial.length) {
+          setMovimientoAImprimir(historial[indiceMovimiento]);
+        }
+        return;
+      }
+
+      if (e.key === 'Delete') {
         e.preventDefault();
         alEliminar(cliente);
       }
     };
     document.addEventListener('keydown', manejar);
     return () => document.removeEventListener('keydown', manejar);
-  }, [hayCambios, alCerrar, alEliminar, cliente]);
+  }, [hayCambios, alCerrar, alEliminar, cliente, historial, indiceMovimiento]);
 
   return (
     <div className="absolute inset-0 bg-gray-900 z-50 flex flex-col overflow-hidden">
@@ -181,7 +278,7 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
       {/* BOTONERA */}
       <div className="bg-gray-800/80 p-3 flex items-center gap-3 border-b border-gray-700 text-sm shrink-0">
         <button onClick={() => setModalPago(true)} className="bg-primario-600 hover:bg-primario-500 text-white px-5 py-2.5 rounded-lg font-bold transition-colors flex items-center focus:outline-none focus:ring-2 focus:ring-primario-400">
-          <kbd className="bg-primario-800 px-2 py-1 rounded text-white mr-2">ENTER</kbd>
+          <kbd className="bg-primario-800 px-2 py-1 rounded text-white mr-2">F3</kbd>
           Registrar Pago
         </button>
         <button disabled={!hayCambios} onClick={() => setConfirmacion('guardar')}
@@ -198,8 +295,10 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
           Eliminar
         </button>
         {hayCambios && <span className="text-alerta text-xs">Hay cambios sin guardar</span>}
-        <div className="flex-1 text-right">
-          <span className="text-gray-400"><kbd className="bg-gray-800 px-2 py-1 rounded mr-2 border border-gray-700">ESC</kbd>Volver al listado</span>
+        <div className="flex-1 text-right flex items-center justify-end gap-4 text-xs text-gray-400">
+          <span><kbd className="bg-gray-800 px-2 py-1 rounded mr-1 border border-gray-700 text-gray-300">Flechas</kbd> Recorrer movimientos</span>
+          <span><kbd className="bg-gray-800 px-2 py-1 rounded mr-1 border border-gray-700 text-gray-300">ENTER</kbd> Imprimir comprobante</span>
+          <span><kbd className="bg-gray-800 px-2 py-1 rounded mr-1 border border-gray-700 text-gray-300">ESC</kbd> Volver al listado</span>
         </div>
       </div>
 
@@ -210,7 +309,7 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
       )}
 
       {/* HISTORIAL */}
-      <div ref={contenedorRef} tabIndex={0} className="flex-1 bg-gray-900 p-6 overflow-y-auto focus:outline-none">
+      <div ref={contenedorRef} tabIndex={0} className="flex-1 bg-gray-900 p-6 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden focus:outline-none">
         <h3 className="text-lg font-bold text-gray-200 mb-4">Historial de Movimientos</h3>
 
         {cargando ? (
@@ -224,19 +323,37 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
           </div>
         ) : (
           <div className="space-y-3">
-            {historial.map((mov) => {
+            {historial.map((mov, i) => {
               const esCargo = mov.tipo === 'cargo';
               const items = leerDetalle(mov);
+              const estaSeleccionado = indiceMovimiento === i;
               return (
-                <div key={mov.id} className="bg-gray-800 border border-gray-700 rounded-xl p-4 flex justify-between items-start">
+                <div
+                  key={mov.id}
+                  ref={el => (movimientoRefs.current[i] = el)}
+                  onClick={() => setIndiceMovimiento(i)}
+                  onDoubleClick={() => setMovimientoAImprimir(mov)}
+                  className={`rounded-xl p-4 flex justify-between items-start cursor-pointer transition-all border ${
+                    estaSeleccionado
+                      ? 'bg-gray-700/80 border-primario-500 ring-2 ring-primario-500/50 shadow-lg'
+                      : 'bg-gray-800 border-gray-700 hover:border-gray-600'
+                  }`}
+                >
                   <div>
-                    <p className="text-white font-bold">{esCargo ? 'Compra fiada' : mov.tipo === 'pago' ? 'Pago recibido' : 'Ajuste'}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-white font-bold">{esCargo ? 'Compra fiada' : mov.tipo === 'pago' ? 'Pago recibido' : 'Ajuste'}</p>
+                      {estaSeleccionado && (
+                        <span className="text-[11px] bg-primario-900/60 text-primario-300 border border-primario-700 px-2 py-0.5 rounded font-medium">
+                          Enter para imprimir
+                        </span>
+                      )}
+                    </div>
                     <p className="text-gray-400 text-sm">{formatearFechaHora(mov.creado_en)}</p>
                     {mov.concepto && !esCargo && <p className="text-gray-400 text-sm mt-1">{mov.concepto}</p>}
                     {items.length > 0 && (
                       <ul className="mt-2 text-sm text-gray-400">
-                        {items.map((it, i) => (
-                          <li key={i}>{it.cantidad} x {it.nombre} — {formatearPrecio(it.subtotal)}</li>
+                        {items.map((it, idx) => (
+                          <li key={idx}>{it.cantidad} x {it.nombre} — {formatearPrecio(it.subtotal)}</li>
                         ))}
                       </ul>
                     )}
@@ -255,6 +372,18 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
         <ModalRegistrarPago cliente={cliente}
           alGuardar={() => { setModalPago(false); cargarDatos(); setMensaje({ tipo: 'exito', texto: 'Pago registrado correctamente' }); devolverFoco(); }}
           alCerrar={() => { setModalPago(false); devolverFoco(); }} />
+      )}
+
+      {movimientoAImprimir && (
+        <ModalConfirmar
+          titulo="Imprimir ticket de cuenta corriente"
+          texto="¿Está seguro de imprimir el ticket de cuenta corriente para este movimiento?"
+          etiquetaAceptar="Imprimir"
+          etiquetaCancelar="Cancelar"
+          opcionInicial="cancelar"
+          alAceptar={confirmarImpresion}
+          alCancelar={() => { setMovimientoAImprimir(null); devolverFoco(); }}
+        />
       )}
 
       {confirmacion === 'guardar' && (

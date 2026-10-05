@@ -9,7 +9,6 @@ const FILTROS = [
   { id: 'antiguedad',  etiqueta: 'Deuda más antigua',    clases: 'bg-peligro text-white border-peligro',            inactivo: 'text-peligro' },
 ];
 
-// Las fechas de SQLite (CURRENT_TIMESTAMP) vienen en UTC sin zona
 function parsearFecha(s) {
   if (!s) return null;
   const d = new Date(String(s).replace(' ', 'T') + 'Z');
@@ -37,7 +36,7 @@ export default function SeccionCuentas() {
   const [pagina, setPagina] = useState(1);
   const [textoBusqueda, setTextoBusqueda] = useState('');
   const [filtroActivo, setFiltroActivo] = useState('nombre');
-  const [cargando, setCargando] = useState(false);
+  const [cargando, setCargando] = useState(true);
 
   const [mostrarModalAlta, setMostrarModalAlta] = useState(false);
   const [clienteAEliminar, setClienteAEliminar] = useState(null);
@@ -49,10 +48,9 @@ export default function SeccionCuentas() {
   const inputBusquedaRef = useRef(null);
   const totalPaginas = Math.max(1, Math.ceil(total / LIMITE_POR_PAGINA));
 
-  const cargarClientes = useCallback(async () => {
-    setCargando(true);
+  const ejecutarBusqueda = useCallback(async (texto, pag, filtro) => {
     try {
-      const r = await window.api.clientes.buscar(textoBusqueda, pagina, LIMITE_POR_PAGINA, filtroActivo);
+      const r = await window.api.clientes.buscar(texto, pag, LIMITE_POR_PAGINA, filtro);
       setClientes(r.filas || []);
       setTotal(r.total || 0);
       setIndiceSeleccionado(0);
@@ -62,12 +60,20 @@ export default function SeccionCuentas() {
     } finally {
       setCargando(false);
     }
-  }, [textoBusqueda, pagina, filtroActivo]);
+  }, []);
 
+  // Carga inmediata en montaje o cambio de filtro/página (sin parpadeo)
   useEffect(() => {
-    const timer = setTimeout(cargarClientes, 250);
+    ejecutarBusqueda(textoBusqueda, pagina, filtroActivo);
+  }, [pagina, filtroActivo, ejecutarBusqueda]);
+
+  // Debounce solo para el tipeo en el buscador
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      ejecutarBusqueda(textoBusqueda, 1, filtroActivo);
+    }, 200);
     return () => clearTimeout(timer);
-  }, [cargarClientes]);
+  }, [textoBusqueda, filtroActivo, ejecutarBusqueda]);
 
   useEffect(() => { inputBusquedaRef.current?.focus(); }, []);
 
@@ -79,7 +85,11 @@ export default function SeccionCuentas() {
   }, [mensaje]);
 
   const manejarBusqueda = (e) => { setTextoBusqueda(e.target.value); setPagina(1); };
-  const manejarFiltro = (id) => { setFiltroActivo(id); setPagina(1); inputBusquedaRef.current?.focus(); };
+  const manejarFiltro = (id) => {
+    setFiltroActivo(id);
+    setPagina(1);
+    inputBusquedaRef.current?.focus();
+  };
 
   const abrirModalCrear = () => setMostrarModalAlta(true);
   const cerrarModalAlta = () => {
@@ -88,7 +98,7 @@ export default function SeccionCuentas() {
   };
   const alCrearCliente = () => {
     cerrarModalAlta();
-    cargarClientes();
+    ejecutarBusqueda(textoBusqueda, pagina, filtroActivo);
     setMensaje({ tipo: 'exito', texto: 'Cliente creado correctamente' });
   };
 
@@ -103,7 +113,7 @@ export default function SeccionCuentas() {
         return;
       }
       setClienteDetalle(null);
-      cargarClientes();
+      ejecutarBusqueda(textoBusqueda, pagina, filtroActivo);
       setMensaje({ tipo: 'exito', texto: `"${cliente.nombre}" eliminado` });
       setTimeout(() => inputBusquedaRef.current?.focus(), 100);
     } catch (e) {
@@ -113,21 +123,13 @@ export default function SeccionCuentas() {
     }
   };
 
-  // Navegación a nivel document
+  // Navegación por teclado: flechas dedicadas exclusivamente a la tabla de clientes
   useEffect(() => {
     const manejar = (e) => {
       if (mostrarModalAlta || clienteDetalle || clienteAEliminar) return;
-      const enInput = document.activeElement?.tagName === 'INPUT';
       const enBoton = document.activeElement?.tagName === 'BUTTON';
 
-      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && (!enInput || textoBusqueda === '')) {
-        e.preventDefault();
-        const idx = FILTROS.findIndex(f => f.id === filtroActivo);
-        const sig = e.key === 'ArrowRight' ? Math.min(idx + 1, FILTROS.length - 1) : Math.max(idx - 1, 0);
-        if (sig !== idx) manejarFiltro(FILTROS[sig].id);
-        return;
-      }
-      if (cargando || clientes.length === 0) return;
+      if (clientes.length === 0) return;
 
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -148,7 +150,7 @@ export default function SeccionCuentas() {
     };
     document.addEventListener('keydown', manejar);
     return () => document.removeEventListener('keydown', manejar);
-  }, [mostrarModalAlta, clienteDetalle, clienteAEliminar, cargando, clientes, indiceSeleccionado, filtroActivo, textoBusqueda, totalPaginas]);
+  }, [mostrarModalAlta, clienteDetalle, clienteAEliminar, clientes, indiceSeleccionado, totalPaginas]);
 
   return (
     <div className="flex-1 flex flex-col p-4 overflow-hidden relative">
@@ -166,8 +168,8 @@ export default function SeccionCuentas() {
         </div>
         <div className="flex gap-2">
           {FILTROS.map(f => (
-            <button key={f.id} onClick={() => manejarFiltro(f.id)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors border focus:outline-none focus:ring-2 focus:ring-primario-400 ${filtroActivo === f.id ? f.clases : `bg-gray-800 border-gray-700 hover:bg-gray-700 ${f.inactivo}`}`}>
+            <button key={f.id} tabIndex={-1} onClick={() => manejarFiltro(f.id)}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors border focus:outline-none ${filtroActivo === f.id ? f.clases : `bg-gray-800 border-gray-700 hover:bg-gray-700 ${f.inactivo}`}`}>
               {f.etiqueta}
             </button>
           ))}
@@ -192,7 +194,7 @@ export default function SeccionCuentas() {
             </tr>
           </thead>
           <tbody>
-            {cargando ? (
+            {cargando && clientes.length === 0 ? (
               <tr><td colSpan="5" className="text-center py-12 text-gray-500">Cargando clientes...</td></tr>
             ) : clientes.length === 0 ? (
               <tr><td colSpan="5" className="text-center py-12 text-gray-500"><p className="text-lg">No hay clientes que coincidan</p></td></tr>
@@ -224,7 +226,7 @@ export default function SeccionCuentas() {
         <span>{total === 0 ? 'Sin resultados' : `${total} cliente${total !== 1 ? 's' : ''} en total`}</span>
 
         <div className="text-xs text-gray-400 flex gap-4 ml-4">
-          <span><kbd className="bg-gray-800 px-1 text-white border border-gray-600 rounded mr-1">Flechas</kbd> Navegar y cambiar filtro</span>
+          <span><kbd className="bg-gray-800 px-1 text-white border border-gray-600 rounded mr-1">Flechas</kbd> Recorrer clientes</span>
           <span><kbd className="bg-gray-800 px-1 text-white border border-gray-600 rounded mr-1">Enter</kbd> Ver ficha del cliente</span>
         </div>
 
@@ -249,7 +251,7 @@ export default function SeccionCuentas() {
       {clienteDetalle && (
         <DetalleCuentaCliente
           cliente={clienteDetalle}
-          alCerrar={() => { setClienteDetalle(null); cargarClientes(); setTimeout(() => inputBusquedaRef.current?.focus(), 50); }}
+          alCerrar={() => { setClienteDetalle(null); ejecutarBusqueda(textoBusqueda, pagina, filtroActivo); setTimeout(() => inputBusquedaRef.current?.focus(), 50); }}
           alEliminar={pedirConfirmacionEliminar}
           alActualizar={(c) => setClienteDetalle(c)}
         />
@@ -294,7 +296,7 @@ function ModalClienteForm({ alGuardar, alCerrar }) {
           <div>
             <label className="block text-sm text-gray-400 mb-1">Nombre y apellido <span className="text-peligro">*</span></label>
             <input ref={inputNombreRef} type="text" value={form.nombre} onChange={c('nombre')}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-primario-500 focus:outline-none" placeholder="Ej: Juan Pérez" />
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-primario-500 focus:outline-none" placeholder="Nombre completo" />
           </div>
           <div className="flex gap-4">
             <div className="flex-1">

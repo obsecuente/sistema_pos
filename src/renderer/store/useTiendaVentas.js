@@ -239,7 +239,7 @@ const useTiendaVentas = create(
         set((estado) => ({
           pestanas: estado.pestanas.map(p => {
             if (p.id !== estado.pestanaActivaId) return p;
-            return { ...p, items: [] };
+            return { ...p, items: [], clienteId: null, clienteNombre: null };
           })
         }));
       },
