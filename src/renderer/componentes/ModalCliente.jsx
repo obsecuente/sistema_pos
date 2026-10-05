@@ -9,18 +9,10 @@ export default function ModalCliente({ onCerrar, onConfirmar }) {
   const [modoCrear, setModoCrear] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState('');
   const [nuevoDni, setNuevoDni] = useState('');
+  const [errorCrear, setErrorCrear] = useState('');
 
   const inputBuscarRef = useRef(null);
   const inputNombreRef = useRef(null);
-  const listoRef = useRef(false);
-  const [busquedaAplicada, setBusquedaAplicada] = useState(null);
-  const [errorCrear, setErrorCrear] = useState('');
-
-  // Ignora el Enter que abrió este modal (rebote del modal anterior)
-  useEffect(() => {
-    const t = setTimeout(() => { listoRef.current = true; }, 250);
-    return () => clearTimeout(t);
-  }, []);
 
   // Buscar clientes en BD
   useEffect(() => {
@@ -28,46 +20,69 @@ export default function ModalCliente({ onCerrar, onConfirmar }) {
     const buscar = async () => {
       setBuscando(true);
       try {
-        const res = await window.api.clientes.buscar(busqueda, 1, 10);
+        const res = await window.api.clientes.buscar(busqueda, 1, 15);
         setClientes(res.filas || []);
         setIndiceSeleccionado(0);
-        setBusquedaAplicada(busqueda);
       } catch (e) {
         console.error('Error buscando clientes:', e);
       }
       setBuscando(false);
     };
-    const timer = setTimeout(buscar, 150);
+    const timer = setTimeout(buscar, 120);
     return () => clearTimeout(timer);
   }, [busqueda, modoCrear]);
 
-  // Focus
+  // Foco inicial
   useEffect(() => {
-    setTimeout(() => {
+    const t = setTimeout(() => {
       if (modoCrear) inputNombreRef.current?.focus();
       else inputBuscarRef.current?.focus();
-    }, 50);
+    }, 40);
+    return () => clearTimeout(t);
   }, [modoCrear]);
 
-  // Manejo de teclado a nivel DOM (document) para que funcione sin necesidad de foco en input
+  const seleccionarCliente = () => {
+    if (clientes.length > 0 && clientes[indiceSeleccionado]) {
+      const c = clientes[indiceSeleccionado];
+      onConfirmar(c.id, c.nombre);
+    }
+  };
+
+  const manejarSubmitNuevo = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    setErrorCrear('');
+    const nombreLimpio = nuevoNombre.trim();
+    if (!nombreLimpio) {
+      setErrorCrear('El nombre es obligatorio');
+      inputNombreRef.current?.focus();
+      return;
+    }
+    try {
+      const res = await window.api.clientes.crear({ nombre: nombreLimpio, cuit: nuevoDni.trim() || null });
+      if (res && res.exito) {
+        onConfirmar(res.id, nombreLimpio);
+      } else {
+        setErrorCrear(res?.error || 'Error al crear cliente');
+      }
+    } catch (error) {
+      console.error('Error al crear cliente:', error);
+      setErrorCrear('Error al crear cliente');
+    }
+  };
+
+  // Manejo de teclado a nivel DOM (document)
   useEffect(() => {
     const manejarKeyDown = (e) => {
       if (modoCrear) {
         if (e.key === 'Escape') {
           e.preventDefault();
           setModoCrear(false);
+          setErrorCrear('');
           setTimeout(() => inputBuscarRef.current?.focus(), 50);
         }
-        return; // El Enter lo maneja el onSubmit del formulario
-      }
-
-      if (e.key === 'Enter' && (!listoRef.current || busquedaAplicada !== busqueda)) {
-        e.preventDefault();
         return;
       }
 
-      const enInput = document.activeElement?.tagName === 'INPUT';
-      
       if (e.key === 'Escape') {
         e.preventDefault();
         onCerrar();
@@ -79,10 +94,7 @@ export default function ModalCliente({ onCerrar, onConfirmar }) {
         setIndiceSeleccionado(prev => Math.max(prev - 1, 0));
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        if (clientes.length > 0 && clientes[indiceSeleccionado]) {
-          const c = clientes[indiceSeleccionado];
-          onConfirmar(c.id, c.nombre);
-        }
+        seleccionarCliente();
       } else if (e.key === 'F2' || e.key === 'Insert') {
         e.preventDefault();
         setModoCrear(true);
@@ -91,18 +103,17 @@ export default function ModalCliente({ onCerrar, onConfirmar }) {
 
     document.addEventListener('keydown', manejarKeyDown);
     return () => document.removeEventListener('keydown', manejarKeyDown);
-  }, [modoCrear, clientes, indiceSeleccionado, onCerrar, onConfirmar]);
+  }, [modoCrear, clientes, indiceSeleccionado, onCerrar]);
 
-  const manejarSubmitNuevo = async (e) => {
-    e.preventDefault();
-    if (!nuevoNombre.trim()) return;
-    try {
-      const res = await window.api.clientes.crear({ nombre: nuevoNombre, cuit: nuevoDni });
-      if (res.exito) {
-        onConfirmar(res.id, nuevoNombre);
-      }
-    } catch (error) {
-      console.error('Error al crear cliente:', error);
+  const manejarKeyDownInputCrear = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      manejarSubmitNuevo(e);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setModoCrear(false);
+      setErrorCrear('');
+      setTimeout(() => inputBuscarRef.current?.focus(), 50);
     }
   };
 
@@ -115,23 +126,38 @@ export default function ModalCliente({ onCerrar, onConfirmar }) {
           </div>
           <form onSubmit={manejarSubmitNuevo} className="p-6">
             <div className="mb-4">
-              <label className="block text-gray-400 text-sm mb-1">Nombre Completo *</label>
+              <label className="block text-gray-400 text-sm mb-1">Nombre y apellido</label>
               <input 
-                ref={inputNombreRef} type="text" required
-                value={nuevoNombre} onChange={e => setNuevoNombre(e.target.value)}
+                ref={inputNombreRef} 
+                type="text" 
+                required
+                value={nuevoNombre} 
+                onChange={e => { setNuevoNombre(e.target.value); setErrorCrear(''); }}
+                onKeyDown={manejarKeyDownInputCrear}
                 className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-primario-500"
+                placeholder="Nombre del cliente"
               />
             </div>
-            <div className="mb-6">
-              <label className="block text-gray-400 text-sm mb-1">DNI (Opcional)</label>
+            <div className="mb-4">
+              <label className="block text-gray-400 text-sm mb-1">DNI</label>
               <input 
                 type="text" 
-                value={nuevoDni} onChange={e => setNuevoDni(e.target.value)}
+                value={nuevoDni} 
+                onChange={e => setNuevoDni(e.target.value)}
+                onKeyDown={manejarKeyDownInputCrear}
                 className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-primario-500"
+                placeholder="Opcional"
               />
             </div>
+
+            {errorCrear && (
+              <div className="mb-4 text-peligro text-sm font-medium">
+                {errorCrear}
+              </div>
+            )}
+
             <div className="flex justify-between items-center mt-6">
-              <span className="text-xs text-gray-500"><kbd className="bg-gray-700 px-1 rounded text-white">ESC</kbd> Cancelar</span>
+              <span className="text-xs text-gray-500"><kbd className="bg-gray-700 px-1 rounded text-white">ESC</kbd> para salir</span>
               <button type="submit" className="bg-primario-600 hover:bg-primario-500 px-6 py-2 rounded-lg text-white font-medium transition-colors">
                 Crear Cliente
               </button>
@@ -158,7 +184,7 @@ export default function ModalCliente({ onCerrar, onConfirmar }) {
         
         <div className="flex-1 overflow-y-auto p-2">
           {buscando ? (
-            <p className="text-gray-500 text-center py-8">Buscando...</p>
+            <p className="text-gray-500 text-center py-8">Cargando clientes...</p>
           ) : clientes.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-gray-400 text-lg mb-2">No se encontraron clientes.</p>
@@ -174,13 +200,13 @@ export default function ModalCliente({ onCerrar, onConfirmar }) {
                 >
                   <div className="flex justify-between items-center">
                     <span className="font-bold text-white text-lg">{c.nombre}</span>
-                    <span className={`font-bold ${c.saldo > 0 ? 'text-peligro' : c.saldo < 0 ? 'text-exito' : 'text-gray-400'}`}>
-                      {c.saldo > 0 ? 'Debe: ' : c.saldo < 0 ? 'A favor: ' : 'Al día: '}${parseFloat(c.saldo || 0).toFixed(2)}
+                    <span className={`font-bold ${c.saldo > 0.005 ? 'text-peligro' : c.saldo < -0.005 ? 'text-exito' : 'text-gray-400'}`}>
+                      {c.saldo > 0.005 ? 'Debe: ' : c.saldo < -0.005 ? 'A favor: ' : 'Al día: '}$ {parseFloat(c.saldo || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
                   <div className="text-sm text-gray-300 mt-1">
                     {c.cuit && <span className="mr-4">DNI: {c.cuit}</span>}
-                    {c.telefono && <span>Tel: {c.telefono}</span>}
+                    {c.telefono && <span>Teléfono: {c.telefono}</span>}
                   </div>
                 </div>
               ))}
@@ -190,12 +216,12 @@ export default function ModalCliente({ onCerrar, onConfirmar }) {
 
         <div className="bg-gray-900 border-t border-gray-700 p-4 rounded-b-xl flex justify-between items-center text-sm">
           <div className="text-gray-400 flex gap-4">
-            <span><kbd className="bg-gray-700 px-1 text-white rounded mr-1">↑↓</kbd> Mover</span>
+            <span><kbd className="bg-gray-700 px-1 text-white rounded mr-1">Flechas</kbd> Mover</span>
             <span><kbd className="bg-gray-700 px-1 text-white rounded mr-1">Enter</kbd> Seleccionar</span>
             <span><kbd className="bg-gray-700 px-1 text-white rounded mr-1">F2</kbd> Nuevo Cliente</span>
           </div>
           <button onClick={onCerrar} className="text-gray-400 hover:text-white">
-            <kbd className="bg-gray-700 px-1 text-white rounded mr-2">ESC</kbd> Cancelar
+            <kbd className="bg-gray-700 px-1 text-white rounded mr-2">ESC</kbd> para salir
           </button>
         </div>
       </div>

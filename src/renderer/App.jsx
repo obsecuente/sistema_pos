@@ -25,7 +25,7 @@ const RUBROS_RAPIDOS = {
   '2': 'Carnicería',
   '3': 'Fiambrería',
   '4': 'Panadería',
-  '5': 'Varios',
+  '5': 'Artículos Varios',
 };
 
 // ─── Modal: Confirmar Anular Venta (navegable con flechas) ──────────────
@@ -631,7 +631,7 @@ function ContenidoVenta() {
             <p><span className="font-bold text-white px-1">2</span> Carnicería</p>
             <p><span className="font-bold text-white px-1">3</span> Fiambrería</p>
             <p><span className="font-bold text-white px-1">4</span> Panadería</p>
-            <p><span className="font-bold text-white px-1">5</span> Varios</p>
+            <p><span className="font-bold text-white px-1">5</span> Artículos Varios</p>
           </div>
           <div className="space-y-1.5 text-xs text-gray-400 mt-4">
             <p className="font-bold text-gray-300 mb-1 border-b border-gray-700 pb-1">Atajos rápidos:</p>
