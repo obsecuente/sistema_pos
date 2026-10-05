@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@compartido/*": ["src/compartido/*"],
+      "@main/*": ["src/main/*"],
+      "@renderer/*": ["src/renderer/*"]
+    },
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "typeRoots": ["node_modules/@types"],
+    "types": ["node"],
+    "checkJs": false,
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

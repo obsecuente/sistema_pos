@@ -1,0 +1,36 @@
+{
+  "name": "rincon-del-gato",
+  "version": "1.0.0",
+  "description": "Sistema de gestión y punto de venta — El Rincón del Gato",
+  "author": "Broki Code",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "src/main/principal.js",
+  "scripts": {
+    "dev": "vite",
+    "dev:electron": "electron .",
+    "build": "vite build",
+    "build:electron": "electron-builder",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "dotenv": "^16.4.7",
+    "electron-updater": "^6.3.9",
+    "mysql2": "^3.11.5",
+    "sqlite3": "^6.0.1",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.4.49",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.17",
+    "vite": "^6.0.7"
+  }
+}

@@ -1,0 +1,95 @@
+
+Actuá como un Arquitecto de Software Senior y experto en hardware de Punto de Venta (POS) en Argentina.
+
+A continuación, te detallo los requerimientos y el hardware de un sistema de almacén que voy a construir con Electron, React y MySQL.
+
+Tu misión de Deep Research es investigar y entregarme lo siguiente:
+
+Integración de Hardware con Node.js / Electron: Investigá cuáles son las mejores librerías actuales en NPM para interactuar con la ticketera Epson TM-T20III Ethernet (protocolo ESC/POS sobre TCP/IP) y el lector Gadnic USB. Buscá ejemplos de código o patrones recomendados para aislar los fallos de hardware y que no cuelguen el hilo principal de React.
+
+Optimización extrema en MySQL: Dado que pido LIMIT y OFFSET y un "Libro Mayor Inmutable" para cuentas corrientes, investigá cuál es la mejor estrategia de indexación en MySQL y qué estructura de tablas es la más veloz para calcular saldos históricos "al vuelo" en bases de datos con cientos de miles de filas, usando recursos limitados (PC de bajos recursos).
+
+Manejo de Pestañas en React sin consumir RAM: Buscá las mejores estrategias o librerías en el ecosistema React (ej. Zustand, Redux, o patrones de montaje/desmontaje) para mantener el estado de múltiples "Ventas en curso" simultáneas en pestañas, consumiendo el mínimo de memoria posible.
+
+UX / Atajos de teclado en Electron: Investigá cuál es la forma más performante y segura de registrar atajos globales (F1, F2... Numpad) en Electron/React sin que generen conflictos con el escáner de código de barras (que actúa como teclado USB).
+
+Contexto del proyecto:
+**Objetivo General:** Desarrollar un sistema de gestión robusto, rápido y 100% operable por teclado para un almacén de barrio. El foco principal es la velocidad en caja y la seguridad absoluta e inquebrantable de los datos de las cuentas corrientes.
+
+**Stack Tecnológico:**
+
+* Frontend: React
+* Backend / Wrapper: Electron + Node.js
+* Base de Datos: MySQL (Workbench)
+* Arquitectura: Sistema liviano, consultas optimizadas con paginación (LIMIT / OFFSET).
+
+**Hardware Objetivo (A integrar):**
+
+* Lectora omnidireccional: Gadnic 1D/2D/QR.
+* Ticketera: Epson TM-T20III Ethernet (Comandera Premium) - Protocolo ESC/POS.
+* UPS: Estabilizador protector TRV Electronics Neo 650VA.
+* *Futuro:* Balanzas con impresión de ticket y etiquetadora térmica.
+
+\-------------------------------------------------------------------------------- 
+
+### 1\. Interfaz y Experiencia de Usuario (UX - Teclado First)
+
+El sistema debe tener una curva de aprendizaje casi nula para "personas de la vieja escuela". El mouse solo se usará para configuraciones avanzadas; la operación diaria en mostrador debe ser 100% por teclado.
+
+* **Pestañas (Tabs) en React:** Para evitar el colapso de RAM abriendo nuevas ventanas de Electron, el sistema manejará pestañas internas. Si un cliente demora la fila, con una tecla se abre una nueva "pestaña de venta" paralela sin perder el estado de la venta anterior.
+* **Selección por Teclado:** Al cerrar ventas, seleccionar métodos de pago (Efectivo, Tarjeta, Cuenta Corriente) se hará navegando con flechas y `Enter`.
+
+**Mapeo de Atajos Proyectado:**
+
+* `F1`: Abrir venta nueva (en una pestaña nueva paralela).
+* `F2`: Abrir sección de Cuentas Corrientes (ver estado o listar nuevo fiado).
+* `F3`: Cerrar venta / Cobrar.
+* `F4`: Buscar / Agregar / Editar productos.
+* `F5`: Reimprimir último comprobante/ticket (Reclamos).
+* `F6`: Reimprimir tickets de precio para góndolas.
+* `F7`: Registrar pago rápido de cuenta corriente.
+* `F8`: Anular ítem de la venta actual (con confirmación por teclado).
+* `F9`: Cierre de Caja / Arqueo del día.
+* `F10`: Reportes rápidos.
+* `Esc`: Cancelar acción actual.
+* `NumPad [1-9]`: Botones de rubro de emergencia (ej: "5" = Panadería) para productos al peso cargados sin balanza. *Nota: Estos ítems figurarán como "Manual" en reportes para diferenciarlos.*
+
+\-------------------------------------------------------------------------------- 
+
+### 2\. Módulo Crítico: Cuentas Corrientes (Fiado)
+
+Este es el pilar del sistema. "Mucho resguardo a las cuentas corrientes, que no se pierdan bajo ningún punto de vista jamás".
+
+* **Libro Mayor (Ledger) Inmutable:** No se actualizarán saldos "pisando" un valor (ej: `UPDATE saldo`). Cada movimiento (fiado, pago, ajuste) se inserta como un nuevo registro con fecha, monto, ítems y usuario. El saldo es la suma del historial.
+* **Snapshot de Precios:** Si un cliente se lleva fiado un producto, la deuda se clava con el precio de ese momento, independientemente de la inflación futura o cambios en la tabla maestra de productos.
+* **Historial Detallado:** Ficha por cliente con paginación, mostrando qué llevó, qué tipo de entregas hizo, fechas y método de pago (si aplica).
+* **Sincronización de Stock:** El fiado descuenta stock automáticamente.
+* **Comprobantes:** Emisión de recibos físicos al abonar (total o parcial).
+
+\-------------------------------------------------------------------------------- 
+
+### 3\. Seguridad, Persistencia y Arquitectura
+
+* **Soft Delete:** Nunca se borra un registro (DELETE físico). Se marcan como "anulados" con usuario, fecha y motivo.
+* **Autosave de Venta:** Ante cortes de luz, la venta en curso se recupera al reabrir el sistema.
+* **Transacciones SQL:** Uso estricto de `START TRANSACTION` / `COMMIT` para operaciones dobles (ej: descontar stock + sumar deuda).
+* **Backups:** Dumps diarios automáticos locales y hacia nube/pendrive.
+* **Permisos y Roles:** Acciones sensibles (anular ventas, editar precios, anular deudas) requerirán clave de nivel "Dueña".
+
+\-------------------------------------------------------------------------------- 
+
+### 4\. Flujos Adicionales
+
+* **Arqueo de Caja (** **F9** **):** Resumen de ventas desglosado por Efectivo, Transferencia/Tarjeta y Fiado, para cotejar la caja física.
+* **Carga inicial (Duda a resolver):** El sistema debe permitir una carga masiva/ágil, pero la operativa manual será extensa.
+* **Manejo de Stock:** Diferenciación entre productos unitarios (botellas) y fraccionados/al peso (fiambre). Alertas de stock mínimo.
+* **Lector de Barras:** Interceptación del escáner con `debounce`; carga automática del producto al carrito sin pulsar enter extra.
+
+
+
+
+
+
+
+
+

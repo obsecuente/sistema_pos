@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Estilos globales para POS de mostrador ──────────────────────────── */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', 'JetBrains Mono', Consolas, monospace;
+  user-select: none;        /* Evitar selección accidental en mostrador */
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+/* Los inputs sí permiten selección de texto */
+input, textarea {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+/* ─── Scrollbar minimalista para listas ────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1f2937;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* ─── Animación suave para modales ─────────────────────────────────────── */
+@keyframes aparecer {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animacion-modal {
+  animation: aparecer 0.15s ease-out;
+}
+
+/* ─── Pestaña activa ───────────────────────────────────────────────────── */
+.pestana-activa {
+  @apply border-b-2 border-primario-400 bg-gray-800 text-white;
+}
+
+.pestana-inactiva {
+  @apply border-b-2 border-transparent bg-gray-900 text-gray-400 hover:text-gray-200;
+}

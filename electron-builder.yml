@@ -1,0 +1,32 @@
+appId: com.brokicode.rincon-del-gato
+productName: El Rincón del Gato
+copyright: Copyright © 2026 Broki Code
+
+directories:
+  output: dist/instalador
+
+files:
+  - src/main/**/*
+  - src/compartido/**/*
+  - dist/renderer/**/*
+  - package.json
+
+extraResources:
+  - assets/**/*
+
+win:
+  target: nsis
+  icon: assets/icon.ico
+
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+  installerIcon: assets/icon.ico
+  uninstallerIcon: assets/icon.ico
+  artifactName: "RinconDelGato-Setup-${version}.${ext}"
+
+publish:
+  provider: github
+  owner: ""
+  repo: ""

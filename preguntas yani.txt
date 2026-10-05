@@ -1,0 +1,20 @@
+Buen día yani, ya estuve investigando y demás. Viendo tambien los componentes que vamos a necesitar para el trabajo.
+Te dejo los componentes que vas a necesitar para el sistema primero
+
+-lectora de codigo de barras:
+https://www.mercadolibre.com.ar/lector-de-codigo-de-barras-gadnic-lectura-1d-2d-qr-omnidireccional/p/MLA26034555?pdp_filters=item_id:MLA1485833480#is_advertising=true&searchVariation=MLA26034555&backend_model=search-backend&be_origin=backend&position=1&search_layout=grid&type=pad&tracking_id=a6556748-036a-4653-80c2-81108813e1c4&ad_domain=VQCATCORE_LST&ad_position=1&ad_click_id=NTVjNDRjM2EtZmFkYS00MTcyLWFmZTYtNDE2ZjkwMjljMjY2
+
+-ticketera:
+https://www.mercadolibre.com.ar/impresora-termica-epson-tmt20iii-ethernet-comandera-premium/up/MLAU3769398513#polycard_client=search-desktop&float_highlight=last_unit&be_origin=backend&overlay_label=not_apply&search_layout=grid&position=1&type=product&tracking_id=bd60e535-3200-439f-af27-c3102309cf6f&wid=MLA1669165067&sid=search
+
+-Ups (estabilizador de energía):
+https://www.mercadolibre.com.ar/ups-estabilizador-protector-neo-650a-va-trv-electronics/p/MLA8044711?pdp_filters=item_id:MLA1654502041#is_advertising=true&searchVariation=MLA8044711&backend_model=search-backend&be_origin=backend&position=3&search_layout=grid&type=pad&tracking_id=563c45a4-e3be-4f1c-a2d2-f5f801ce4fac&ad_domain=VQCATCORE_LST&ad_position=3&ad_click_id=NjM0ODJiNTMtZWZiMC00ZmE3LWE4MTYtZDNjZWUyYjdkYjA5
+
+Yani, te dejo algunas consultas que me van surgiendo dale? ya estoy craneando un poco todo 
+
+1) tenés impresora para programarla a imprimir tickets? si no vienen ticketeras autoadhesivas para ponerle el precio en la gondola al producto
+2) quien carga los productos iniciales? los primeros días van a ser muchos productos, y va a ser escanear codigo por codigo hasta terminar con la carga de productos entera del almacen. yo me puedo encargar de eso una vez esté terminado el sistema, pero sería un trabajo aparte porque va a llevar varias horas, o días capaz. ya que es encargarse dar ponerle nombre al producto, precio al producto, cantidades del producto
+3) manejas medios de pago con recargo? o el pago es igual sea efectivo, transferencia y tarjetas? y con las cuentas corrientes, haces recargos? 
+4) necesitas un recibo tuyo y para el cliente de la cuenta corriente, si abona parcialmente su saldo o la totalidad? para dejar algun registro de la totalidad o parcialidad? 
+
+
