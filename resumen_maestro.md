@@ -470,3 +470,26 @@ flowchart LR
   - `CANALES.CAJA_ULTIMO_CIERRE`: Permite recuperar el último corte registrado junto con el usuario responsable para auditoría.
 - **Puntos técnicos atendidos en SQLite:** Identificación de llamadas a funciones no soportadas por SQLite (reemplazo de `NOW()` por `CURRENT_TIMESTAMP`).
 - **Interfaz pendiente:** En el frontend, F9 continúa vinculado a `SeccionPlaceholder` a la espera del diseño final de la pantalla de arqueo y cierre.
+
+### 21.5 Pulido integral de Ventas y Cuentas Corrientes (Últimos avances)
+- **Reseteo del badge de cliente en Ventas:** Se corrigió en `useTiendaVentas.js` (`vaciarPestanaActiva`) la persistencia indebida de la insignia `Cliente: [Nombre]`. Al finalizar cualquier venta (efectivo, tarjeta, transferencia), el cliente vinculado a la pestaña activa se restablece a `null`, impidiendo que ventas posteriores queden asociadas a un cliente anterior por error.
+- **Deuda corriente dinámica por inflación (Actualización de precios en tiempo real):**
+  - En `src/main/manejadoresIpc.js`, se implementó actualización dinámica de la deuda histórica de cuentas corrientes ante aumentos de precios en `SeccionProductos`.
+  - Al actualizar el precio de venta de un artículo (`PRODUCTO_ACTUALIZAR`), el sistema actualiza de manera atómica todos los registros del `libro_mayor` asociados a compras fiadas que contengan dicho `productoId` en su `detalle_items`, recalculando subtotales y monto total del movimiento.
+  - En `LIBRO_OBTENER_SALDO` y `LIBRO_OBTENER_HISTORIAL`, se evalúan los precios unitarios vigentes en la tabla de productos para garantizar que el saldo adeudado y los movimientos reflejen el valor presente en tiempo real (manteniendo fijos los importes de rubros rápidos sin producto vinculado).
+- **Optimización de rendimiento y eliminación de parpadeo en Cuentas Corrientes (`SeccionCuentas.jsx`):**
+  - Carga inmediata en el montaje sin desfase por `cargando = false` ni pantalla de "No hay clientes" fugaz.
+  - Transición fluida al alternar filtros ("Todos", "Mayor deuda", "Deuda más antigua"): las filas existentes permanecen visibles mientras se resuelve la consulta en segundo plano (0ms de latencia percibida).
+  - Búsqueda con debounce de 200ms únicamente durante el tipeo en el buscador.
+- **Desacople estricto de navegación por teclado en Cuentas Corrientes:**
+  - Los botones de filtros de ordenamiento ("Todos", "Mayor deuda", "Deuda más antigua") tienen `tabIndex={-1}` y se operan exclusivamente con el mouse, evitando conflictos de foco.
+  - Las flechas `Arriba` y `Abajo` están dedicadas al 100% al recorrido de las filas de clientes de la tabla. `Enter` ingresa directamente a la ficha del cliente seleccionado.
+  - Leyenda inferior limpia: `Flechas Recorrer clientes — Enter Ver ficha del cliente` (sin paréntesis y sin emojis).
+- **Navegación e impresión de comprobante en Ficha de Cliente (`DetalleCuentaCliente.jsx`):**
+  - Recorrido del historial de movimientos con flechas `Arriba` y `Abajo`, con resalte visual de la tarjeta activa y desplazamiento automático (`scrollIntoView`).
+  - Ocultamiento de la barra de desplazamiento visual tradicional para dar prioridad al recorrido directo por flechas.
+  - Al presionar `Enter` sobre un movimiento seleccionado (o hacer doble clic), se despliega un modal de confirmación (`ModalConfirmar`): `¿Está seguro de imprimir el ticket de cuenta corriente para este movimiento?`, con foco inicial seguro en "Cancelar", navegable con flechas y cancelable con `ESC`.
+  - Confirmación envía el comprobante a la ticketera mediante `window.api.hardware.imprimirTicket`.
+  - Registro de cobro / abono reasignado a `F3` (`F3 Registrar Pago`), manteniendo coherencia con el atajo de cobro de todo el sistema.
+- **Sincronización remota:** Todo el repositorio se encuentra versionado y sincronizado en la rama `main` de GitHub (`https://github.com/obsecuente/sistema_pos.git`).
+
