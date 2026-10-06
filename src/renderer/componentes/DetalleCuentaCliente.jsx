@@ -23,9 +23,10 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
   const [saldo, setSaldo] = useState(parseFloat(cliente.saldo || 0));
   const [cargando, setCargando] = useState(true);
   const [modalPago, setModalPago] = useState(false);
-  const [confirmacion, setConfirmacion] = useState(null); // 'guardar' | 'descartar' | 'salir'
+  const [confirmacion, setConfirmacion] = useState(null); // 'guardar' | 'descartar' | 'salir' | 'eliminar'
   const [mensaje, setMensaje] = useState(null);
   const [guardando, setGuardando] = useState(false);
+  const [editandoPerfil, setEditandoPerfil] = useState(false);
 
   // Recorrido e impresion de movimientos
   const [indiceMovimiento, setIndiceMovimiento] = useState(0);
@@ -108,6 +109,7 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
       }
       alActualizar({ ...cliente, ...borrador, nombre: borrador.nombre.trim(), cuit: borrador.cuit.trim(), telefono: borrador.telefono.trim(), saldo });
       setMensaje({ tipo: 'exito', texto: 'Ajustes guardados correctamente' });
+      setEditandoPerfil(false);
       devolverFoco();
     } catch (e) {
       console.error(e);
@@ -121,7 +123,28 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
   const descartarCambios = () => {
     setBorrador(original);
     setConfirmacion(null);
+    setEditandoPerfil(false);
     devolverFoco();
+  };
+
+  const ejecutarEliminacion = async () => {
+    setConfirmacion(null);
+    try {
+      const res = await window.api.clientes.eliminar(cliente.id);
+      if (!res || !res.exito) {
+        setMensaje({
+          tipo: 'error',
+          texto: res?.error || 'No se puede eliminar el cliente porque tiene una deuda activa. Debe saldarla primero.'
+        });
+        devolverFoco();
+        return;
+      }
+      alEliminar(cliente);
+    } catch (err) {
+      console.error('Error al eliminar cliente:', err);
+      setMensaje({ tipo: 'error', texto: 'Error de comunicación al intentar eliminar el cliente' });
+      devolverFoco();
+    }
   };
 
   const confirmarImpresion = async () => {
@@ -180,7 +203,12 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
       if (e.key === 'Escape') {
         e.preventDefault();
         if (hayCambios) { setConfirmacion(enCampo ? 'descartar' : 'salir'); return; }
-        if (enCampo) { el.blur(); contenedorRef.current?.focus(); return; }
+        if (enCampo) {
+          el.blur();
+          setEditandoPerfil(false);
+          contenedorRef.current?.focus();
+          return;
+        }
         alCerrar();
         return;
       }
@@ -192,7 +220,11 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
           const i = campos.indexOf(el);
           if (i >= 0 && i < campos.length - 1) campos[i + 1].focus();
           else if (hayCambios) setConfirmacion('guardar');
-          else { el.blur(); contenedorRef.current?.focus(); }
+          else {
+            el.blur();
+            setEditandoPerfil(false);
+            contenedorRef.current?.focus();
+          }
         }
         return;
       }
@@ -229,12 +261,12 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
 
       if (e.key === 'Delete') {
         e.preventDefault();
-        alEliminar(cliente);
+        setConfirmacion('eliminar');
       }
     };
     document.addEventListener('keydown', manejar);
     return () => document.removeEventListener('keydown', manejar);
-  }, [hayCambios, alCerrar, alEliminar, cliente, historial, indiceMovimiento]);
+  }, [hayCambios, alCerrar, cliente, historial, indiceMovimiento]);
 
   return (
     <div className="absolute inset-0 bg-gray-900 z-50 flex flex-col overflow-hidden">
@@ -248,21 +280,52 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
           <div className="flex-1 min-w-0 grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className="block text-xs text-gray-400 mb-1">Nombre y apellido</label>
-              <input ref={refNombre} data-campo type="text" value={borrador.nombre} onChange={cambiar('nombre')}
-                className={`${CLASE_CAMPO} text-xl font-bold`} placeholder="Nombre y apellido" />
+              <input
+                ref={refNombre}
+                data-campo
+                type="text"
+                value={borrador.nombre}
+                onChange={cambiar('nombre')}
+                onFocus={() => setEditandoPerfil(true)}
+                className={`${CLASE_CAMPO} text-xl font-bold`}
+                placeholder="Nombre y apellido"
+              />
             </div>
             <div>
               <label className="block text-xs text-gray-400 mb-1">DNI</label>
-              <input data-campo type="text" value={borrador.cuit} onChange={cambiar('cuit')} className={CLASE_CAMPO} placeholder="Sin DNI" />
+              <input
+                data-campo
+                type="text"
+                value={borrador.cuit}
+                onChange={cambiar('cuit')}
+                onFocus={() => setEditandoPerfil(true)}
+                className={CLASE_CAMPO}
+                placeholder="Sin DNI"
+              />
             </div>
             <div>
               <label className="block text-xs text-gray-400 mb-1">Teléfono</label>
-              <input data-campo type="text" value={borrador.telefono} onChange={cambiar('telefono')} className={CLASE_CAMPO} placeholder="Sin teléfono" />
+              <input
+                data-campo
+                type="text"
+                value={borrador.telefono}
+                onChange={cambiar('telefono')}
+                onFocus={() => setEditandoPerfil(true)}
+                className={CLASE_CAMPO}
+                placeholder="Sin teléfono"
+              />
             </div>
             <div className="col-span-2">
               <label className="block text-xs text-gray-400 mb-1">Notas del cliente</label>
-              <textarea data-campo value={borrador.notas} onChange={cambiar('notas')} rows={2}
-                className={`${CLASE_CAMPO} resize-none`} placeholder="Dirección, aclaraciones, etc." />
+              <textarea
+                data-campo
+                value={borrador.notas}
+                onChange={cambiar('notas')}
+                onFocus={() => setEditandoPerfil(true)}
+                rows={2}
+                className={`${CLASE_CAMPO} resize-none`}
+                placeholder="Dirección, aclaraciones, etc."
+              />
             </div>
           </div>
         </div>
@@ -281,20 +344,34 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
           <kbd className="bg-primario-800 px-2 py-1 rounded text-white mr-2">F3</kbd>
           Registrar Pago
         </button>
-        <button disabled={!hayCambios} onClick={() => setConfirmacion('guardar')}
-          className="bg-exito/90 hover:bg-exito text-gray-900 px-5 py-2.5 rounded-lg font-bold transition-colors disabled:opacity-30 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-green-300">
-          Guardar ajustes
-        </button>
-        <button disabled={!hayCambios} onClick={() => setConfirmacion('descartar')}
-          className="bg-gray-700 hover:bg-gray-600 text-white px-5 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primario-400">
-          Descartar cambios
-        </button>
-        <button onClick={() => alEliminar(cliente)}
-          className="bg-gray-700 hover:bg-peligro/80 text-gray-300 hover:text-white px-5 py-2.5 rounded-lg font-medium transition-colors flex items-center border border-gray-600 hover:border-peligro focus:outline-none focus:ring-2 focus:ring-peligro">
+
+        {(editandoPerfil || hayCambios) && (
+          <>
+            <button
+              disabled={!hayCambios}
+              onClick={() => setConfirmacion('guardar')}
+              className="bg-exito/90 hover:bg-exito text-gray-900 px-5 py-2.5 rounded-lg font-bold transition-colors disabled:opacity-30 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-green-300"
+            >
+              Guardar ajustes
+            </button>
+            <button
+              onClick={descartarCambios}
+              className="bg-gray-700 hover:bg-gray-600 text-white px-5 py-2.5 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primario-400"
+            >
+              Descartar cambios
+            </button>
+            {hayCambios && <span className="text-alerta text-xs">Hay cambios sin guardar</span>}
+          </>
+        )}
+
+        <button
+          onClick={() => setConfirmacion('eliminar')}
+          className="bg-gray-700 hover:bg-peligro/80 text-gray-300 hover:text-white px-5 py-2.5 rounded-lg font-medium transition-colors flex items-center border border-gray-600 hover:border-peligro focus:outline-none focus:ring-2 focus:ring-peligro"
+        >
           <kbd className="bg-gray-800 px-2 py-1 rounded text-gray-300 mr-2">SUPR</kbd>
           Eliminar
         </button>
-        {hayCambios && <span className="text-alerta text-xs">Hay cambios sin guardar</span>}
+
         <div className="flex-1 text-right flex items-center justify-end gap-4 text-xs text-gray-400">
           <span><kbd className="bg-gray-800 px-2 py-1 rounded mr-1 border border-gray-700 text-gray-300">Flechas</kbd> Recorrer movimientos</span>
           <span><kbd className="bg-gray-800 px-2 py-1 rounded mr-1 border border-gray-700 text-gray-300">ENTER</kbd> Imprimir comprobante</span>
@@ -383,6 +460,18 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
           opcionInicial="cancelar"
           alAceptar={confirmarImpresion}
           alCancelar={() => { setMovimientoAImprimir(null); devolverFoco(); }}
+        />
+      )}
+
+      {confirmacion === 'eliminar' && (
+        <ModalConfirmar
+          titulo="Eliminar cliente"
+          texto={`¿Está seguro de eliminar a ${cliente.nombre}? Esta acción no se puede deshacer.`}
+          etiquetaAceptar="Eliminar"
+          etiquetaCancelar="Cancelar"
+          opcionInicial="cancelar"
+          alAceptar={ejecutarEliminacion}
+          alCancelar={() => { setConfirmacion(null); devolverFoco(); }}
         />
       )}
 

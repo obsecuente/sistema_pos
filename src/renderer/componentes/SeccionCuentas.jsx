@@ -252,7 +252,12 @@ export default function SeccionCuentas() {
         <DetalleCuentaCliente
           cliente={clienteDetalle}
           alCerrar={() => { setClienteDetalle(null); ejecutarBusqueda(textoBusqueda, pagina, filtroActivo); setTimeout(() => inputBusquedaRef.current?.focus(), 50); }}
-          alEliminar={pedirConfirmacionEliminar}
+          alEliminar={(c) => {
+            setClienteDetalle(null);
+            ejecutarBusqueda(textoBusqueda, pagina, filtroActivo);
+            setMensaje({ tipo: 'exito', texto: `"${c.nombre}" eliminado correctamente` });
+            setTimeout(() => inputBusquedaRef.current?.focus(), 100);
+          }}
           alActualizar={(c) => setClienteDetalle(c)}
         />
       )}

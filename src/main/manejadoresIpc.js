@@ -72,11 +72,63 @@ function enviarAWorker(mensaje) {
   });
 }
 
+/**
+ * Sincroniza los montos y subtotales de las compras fiadas en el libro mayor
+ * con los precios de venta vigentes en la tabla de productos (actualización por inflación).
+ */
+async function sincronizarPreciosLibroMayor() {
+  try {
+    const productos = await consultar(`SELECT id, precio_venta FROM productos WHERE eliminado_en IS NULL`);
+    const mapaPrecios = new Map(productos.map(p => [Number(p.id), parseFloat(p.precio_venta)]));
+
+    const cargos = await consultar(
+      `SELECT id, monto, detalle_items FROM libro_mayor WHERE tipo = 'cargo' AND detalle_items IS NOT NULL`
+    );
+
+    for (const c of cargos) {
+      if (!c.detalle_items) continue;
+      let items;
+      try {
+        items = JSON.parse(c.detalle_items);
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(items)) continue;
+
+      let modificado = false;
+      let nuevoMonto = 0;
+
+      for (const it of items) {
+        const idNum = Number(it.productoId);
+        if (!isNaN(idNum) && idNum > 0 && mapaPrecios.has(idNum)) {
+          const precioActual = mapaPrecios.get(idNum);
+          if (it.precioUnitario !== precioActual) {
+            it.precioUnitario = precioActual;
+            it.subtotal = (Number(it.cantidad || 1) * precioActual);
+            modificado = true;
+          }
+        }
+        nuevoMonto += (Number(it.cantidad || 1) * Number(it.precioUnitario || 0));
+      }
+
+      if (modificado || Math.abs(parseFloat(c.monto) - nuevoMonto) > 0.005) {
+        await consultar(
+          `UPDATE libro_mayor SET monto = ?, detalle_items = ? WHERE id = ?`,
+          [nuevoMonto, JSON.stringify(items), c.id]
+        );
+      }
+    }
+  } catch (err) {
+    console.error('[LibroMayor] Error en sincronizarPreciosLibroMayor:', err);
+  }
+}
+
 // ============================================================================
 // REGISTRAR TODOS LOS HANDLERS
 // ============================================================================
 
 function registrarManejadoresIpc() {
+  sincronizarPreciosLibroMayor().catch(err => console.error('[LibroMayor] Sync inicial fallo:', err));
 
   // ─── PRODUCTOS ─────────────────────────────────────────────────────
 
@@ -191,35 +243,7 @@ function registrarManejadoresIpc() {
 
     // Si se actualizó el precio de venta, indexar automáticamente los cargos en libro_mayor a precio presente
     if (datos.precioVenta !== undefined) {
-      try {
-        const nuevoP = parseFloat(datos.precioVenta);
-        const cargos = await consultar(
-          `SELECT id, detalle_items FROM libro_mayor WHERE tipo = 'cargo' AND detalle_items LIKE ?`,
-          [`%"productoId":${datos.id}%`]
-        );
-        for (const c of cargos) {
-          if (!c.detalle_items) continue;
-          const items = JSON.parse(c.detalle_items);
-          let mod = false;
-          let nuevoMonto = 0;
-          for (const it of items) {
-            if (it.productoId === datos.id) {
-              it.precioUnitario = nuevoP;
-              it.subtotal = it.cantidad * nuevoP;
-              mod = true;
-            }
-            nuevoMonto += (it.cantidad * it.precioUnitario);
-          }
-          if (mod) {
-            await consultar(
-              `UPDATE libro_mayor SET monto = ?, detalle_items = ? WHERE id = ?`,
-              [nuevoMonto, JSON.stringify(items), c.id]
-            );
-          }
-        }
-      } catch (errSync) {
-        console.error('[LibroMayor] Error indexando precio de producto:', errSync);
-      }
+      await sincronizarPreciosLibroMayor();
     }
 
     return { exito: true };
@@ -402,41 +426,17 @@ function registrarManejadoresIpc() {
   // ─── LIBRO MAYOR (CUENTAS CORRIENTES) ─────────────────────────────
 
   ipcMain.handle(CANALES.LIBRO_OBTENER_SALDO, async (_evento, { cuentaId }) => {
-    const filas = await consultar(
-      `SELECT tipo, monto, detalle_items FROM libro_mayor WHERE cuenta_id = ?`,
+    await sincronizarPreciosLibroMayor();
+    const [fila] = await consultar(
+      `SELECT COALESCE(SUM(CASE WHEN tipo = 'cargo' THEN monto ELSE -monto END), 0) AS saldo
+       FROM libro_mayor WHERE cuenta_id = ?`,
       [cuentaId]
     );
-    const productos = await consultar(`SELECT id, precio_venta FROM productos`);
-    const mapaPrecios = new Map(productos.map(p => [p.id, parseFloat(p.precio_venta)]));
-
-    let saldo = 0;
-    for (const fila of filas) {
-      if (fila.tipo === 'cargo') {
-        if (fila.detalle_items) {
-          try {
-            const items = JSON.parse(fila.detalle_items);
-            let totalCargo = 0;
-            for (const it of items) {
-              const pVigente = it.productoId ? (mapaPrecios.get(it.productoId) ?? it.precioUnitario) : it.precioUnitario;
-              totalCargo += (it.cantidad * pVigente);
-            }
-            saldo += totalCargo;
-          } catch {
-            saldo += parseFloat(fila.monto);
-          }
-        } else {
-          saldo += parseFloat(fila.monto);
-        }
-      } else if (fila.tipo === 'pago') {
-        saldo -= parseFloat(fila.monto);
-      } else if (fila.tipo === 'ajuste') {
-        saldo += parseFloat(fila.monto);
-      }
-    }
-    return { saldo };
+    return { saldo: parseFloat(fila?.saldo || 0) };
   });
 
   ipcMain.handle(CANALES.LIBRO_OBTENER_HISTORIAL, async (_evento, { cuentaId, pagina = 1, limite = 50 }) => {
+    await sincronizarPreciosLibroMayor();
     const res = await consultaDiferida({
       tabla:           'libro_mayor',
       alias:           'lm',
@@ -446,38 +446,6 @@ function registrarManejadoresIpc() {
       limite,
       parametros:      [cuentaId],
     });
-
-    const productos = await consultar(`SELECT id, precio_venta FROM productos`);
-    const mapaPrecios = new Map(productos.map(p => [p.id, parseFloat(p.precio_venta)]));
-
-    res.filas = res.filas.map(row => {
-      if (row.tipo === 'cargo' && row.detalle_items) {
-        try {
-          const items = JSON.parse(row.detalle_items);
-          let totalCalc = 0;
-          const itemsActualizados = items.map(it => {
-            const precioVigente = it.productoId ? (mapaPrecios.get(it.productoId) ?? it.precioUnitario) : it.precioUnitario;
-            const subtotal = it.cantidad * precioVigente;
-            totalCalc += subtotal;
-            return {
-              ...it,
-              precioUnitario: precioVigente,
-              precioOriginal: it.precioUnitario,
-              subtotal,
-            };
-          });
-          return {
-            ...row,
-            monto: totalCalc,
-            detalle_items: JSON.stringify(itemsActualizados),
-          };
-        } catch {
-          return row;
-        }
-      }
-      return row;
-    });
-
     return res;
   });
 
@@ -509,6 +477,7 @@ function registrarManejadoresIpc() {
   // ─── CLIENTES ──────────────────────────────────────────────────────
 
   ipcMain.handle(CANALES.CLIENTE_BUSCAR, async (_evento, { texto, pagina = 1, limite = 50, orden = 'nombre' }) => {
+    await sincronizarPreciosLibroMayor();
     const filtro = `%${texto || ''}%`;
     const desplazamiento = (pagina - 1) * limite;
 
@@ -585,6 +554,7 @@ function registrarManejadoresIpc() {
   });
 
   ipcMain.handle(CANALES.CLIENTE_ELIMINAR, async (_evento, { id }) => {
+    await sincronizarPreciosLibroMayor();
     // 1. Obtener el saldo actual
     const [saldoResult] = await consultar(
       `SELECT COALESCE(SUM(CASE WHEN tipo = 'cargo' THEN monto ELSE -monto END), 0) AS saldo 
@@ -592,7 +562,7 @@ function registrarManejadoresIpc() {
       [id]
     );
 
-    if (saldoResult && parseFloat(saldoResult.saldo) > 0) {
+    if (saldoResult && parseFloat(saldoResult.saldo) > 0.005) {
       return { exito: false, error: 'No se puede eliminar el cliente porque tiene una deuda activa. Debe saldarla primero.' };
     }
 
