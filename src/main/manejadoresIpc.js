@@ -374,30 +374,212 @@ function registrarManejadoresIpc() {
     return resultado;
   });
 
-  ipcMain.handle(CANALES.VENTA_ANULAR, async (_evento, { ventaId, motivo, pinDuena }) => {
-    // Verificar PIN de dueña antes de anular
-    const usuarios = await consultar(
-      `SELECT id, pin_hash FROM usuarios WHERE rol = 'duena' AND eliminado_en IS NULL LIMIT 1`
-    );
-    if (usuarios.length === 0) {
-      return { exito: false, error: 'No hay usuario dueña configurado' };
+  ipcMain.handle(CANALES.VENTA_ANULAR, async (_evento, { ventaId, motivo = '' }) => {
+    const resultado = await conTransaccion(async (con) => {
+      // 1. Obtener la venta
+      const [ventas] = await con.execute(
+        `SELECT * FROM ventas WHERE id = ?`,
+        [ventaId]
+      );
+      if (ventas.length === 0) throw new Error('Venta no encontrada');
+      const venta = ventas[0];
+      if (venta.estado === 'anulada') throw new Error('La venta ya fue anulada previamente');
+
+      // 2. Marcar como anulada
+      await con.execute(
+        `UPDATE ventas
+         SET estado = 'anulada', motivo_anulacion = ?, anulada_por = 1
+         WHERE id = ?`,
+        [motivo || 'Anulación de venta', ventaId]
+      );
+
+      // 3. Obtener items y revertir stock de los productos con producto_id válido
+      const [items] = await con.execute(
+        `SELECT producto_id, cantidad, es_manual FROM items_venta WHERE venta_id = ?`,
+        [ventaId]
+      );
+      for (const it of items) {
+        if (it.producto_id && !it.es_manual) {
+          await con.execute(
+            `UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?`,
+            [it.cantidad, it.producto_id]
+          );
+        }
+      }
+
+      // 4. Si fue cuenta corriente, insertar movimiento compensatorio en libro_mayor
+      if (venta.medio_pago === 'cuenta_corriente' && venta.cliente_id) {
+        await con.execute(
+          `INSERT INTO libro_mayor (cuenta_id, usuario_id, venta_id, tipo, monto, concepto, detalle_items)
+           VALUES (?, 1, ?, 'ajuste', ?, ?, NULL)`,
+          [
+            venta.cliente_id,
+            ventaId,
+            venta.total,
+            `Anulación de ticket #${ventaId}`
+          ]
+        );
+      }
+
+      return { exito: true };
+    });
+
+    // Sincronizar saldos de cuenta corriente tras la compensación
+    await sincronizarPreciosLibroMayor();
+    return resultado;
+  });
+
+  ipcMain.handle(CANALES.VENTAS_OBTENER_HISTORIAL, async (_evento, { fechaDesde, fechaHasta, medioPago, busqueda, pagina = 1, limite = 15 } = {}) => {
+    const condiciones = ['1=1'];
+    const parametros = [];
+
+    if (fechaDesde) {
+      condiciones.push('v.creado_en >= ?');
+      parametros.push(`${fechaDesde} 00:00:00`);
+    }
+    if (fechaHasta) {
+      condiciones.push('v.creado_en <= ?');
+      parametros.push(`${fechaHasta} 23:59:59`);
+    }
+    if (medioPago && medioPago !== 'todos') {
+      condiciones.push('v.medio_pago = ?');
+      parametros.push(medioPago);
+    }
+    if (busqueda && busqueda.trim()) {
+      const b = `%${busqueda.trim()}%`;
+      const num = parseInt(busqueda.trim(), 10);
+      if (!isNaN(num) && String(num) === busqueda.trim()) {
+        condiciones.push('(v.id = ? OR c.nombre LIKE ? OR c.cuit LIKE ?)');
+        parametros.push(num, b, b);
+      } else {
+        condiciones.push('(c.nombre LIKE ? OR c.cuit LIKE ?)');
+        parametros.push(b, b);
+      }
     }
 
-    const pinValido = await bcrypt.compare(pinDuena, usuarios[0].pin_hash);
-    if (!pinValido) {
-      return { exito: false, error: 'PIN de dueña incorrecto' };
-    }
+    const whereSql = condiciones.join(' AND ');
+    const desplazamiento = (pagina - 1) * limite;
 
-    await consultar(
-      `UPDATE ventas SET estado = 'anulada', anulada_por = ?, motivo_anulacion = ?
-       WHERE id = ? AND estado = 'completada'`,
-      [usuarios[0].id, motivo, ventaId]
+    const filas = await consultar(
+      `SELECT v.id, v.usuario_id, v.cliente_id, v.medio_pago, v.porcentaje_recargo,
+              v.subtotal, v.total, v.estado, v.motivo_anulacion, v.creado_en,
+              c.nombre AS cliente_nombre, c.cuit AS cliente_cuit
+       FROM ventas v
+       LEFT JOIN clientes c ON v.cliente_id = c.id
+       WHERE ${whereSql}
+       ORDER BY v.creado_en DESC, v.id DESC
+       LIMIT ? OFFSET ?`,
+      [...parametros, limite, desplazamiento]
     );
 
-    // Nota: No se revierte el stock automáticamente. Si se necesita,
-    // se hace un ajuste manual de inventario. Esto es intencional para auditoría.
+    const [conteo] = await consultar(
+      `SELECT COUNT(*) AS total
+       FROM ventas v
+       LEFT JOIN clientes c ON v.cliente_id = c.id
+       WHERE ${whereSql}`,
+      parametros
+    );
 
-    return { exito: true };
+    const [resumen] = await consultar(
+      `SELECT
+         COALESCE(SUM(CASE WHEN v.estado = 'completada' THEN v.total ELSE 0 END), 0) AS totalFacturado,
+         COALESCE(SUM(CASE WHEN v.estado = 'completada' AND v.medio_pago = 'efectivo' THEN v.total ELSE 0 END), 0) AS totalEfectivo,
+         COALESCE(SUM(CASE WHEN v.estado = 'completada' AND v.medio_pago = 'tarjeta' THEN v.total ELSE 0 END), 0) AS totalTarjeta,
+         COALESCE(SUM(CASE WHEN v.estado = 'completada' AND v.medio_pago = 'transferencia' THEN v.total ELSE 0 END), 0) AS totalTransferencia,
+         COALESCE(SUM(CASE WHEN v.estado = 'completada' AND v.medio_pago = 'cuenta_corriente' THEN v.total ELSE 0 END), 0) AS totalCuentaCorriente,
+         COALESCE(SUM(CASE WHEN v.estado = 'anulada' THEN v.total ELSE 0 END), 0) AS totalAnulado
+       FROM ventas v
+       LEFT JOIN clientes c ON v.cliente_id = c.id
+       WHERE ${whereSql}`,
+      parametros
+    );
+
+    return {
+      filas,
+      total: conteo?.total || 0,
+      pagina,
+      limite,
+      resumen: {
+        totalFacturado: parseFloat(resumen?.totalFacturado || 0),
+        totalEfectivo: parseFloat(resumen?.totalEfectivo || 0),
+        totalTarjeta: parseFloat(resumen?.totalTarjeta || 0),
+        totalTransferencia: parseFloat(resumen?.totalTransferencia || 0),
+        totalCuentaCorriente: parseFloat(resumen?.totalCuentaCorriente || 0),
+        totalAnulado: parseFloat(resumen?.totalAnulado || 0),
+      }
+    };
+  });
+
+  ipcMain.handle(CANALES.VENTAS_OBTENER_DETALLE, async (_evento, { ventaId }) => {
+    const filasVenta = await consultar(
+      `SELECT v.*, c.nombre AS cliente_nombre, c.cuit AS cliente_cuit, c.telefono AS cliente_telefono
+       FROM ventas v
+       LEFT JOIN clientes c ON v.cliente_id = c.id
+       WHERE v.id = ?`,
+      [ventaId]
+    );
+    if (filasVenta.length === 0) return null;
+    const venta = filasVenta[0];
+
+    const items = await consultar(
+      `SELECT iv.id, iv.venta_id, iv.producto_id, iv.nombre_snapshot,
+              iv.cantidad, iv.precio_unitario_snapshot, iv.subtotal, iv.es_manual,
+              p.codigo_barras
+       FROM items_venta iv
+       LEFT JOIN productos p ON iv.producto_id = p.id
+       WHERE iv.venta_id = ?
+       ORDER BY iv.id ASC`,
+      [ventaId]
+    );
+
+    return { ...venta, items };
+  });
+
+  ipcMain.handle(CANALES.VENTAS_PURGAR, async (_evento, { fechaDesde, fechaHasta, soloConteo = false }) => {
+    const condiciones = ['1=1'];
+    const parametros = [];
+
+    if (fechaDesde) {
+      condiciones.push('creado_en >= ?');
+      parametros.push(`${fechaDesde} 00:00:00`);
+    }
+    if (fechaHasta) {
+      condiciones.push('creado_en <= ?');
+      parametros.push(`${fechaHasta} 23:59:59`);
+    }
+
+    const whereSql = condiciones.join(' AND ');
+
+    if (soloConteo) {
+      const [conteo] = await consultar(
+        `SELECT COUNT(*) AS total FROM ventas WHERE ${whereSql}`,
+        parametros
+      );
+      return { total: conteo?.total || 0 };
+    }
+
+    const resultado = await conTransaccion(async (con) => {
+      const [filas] = await con.execute(
+        `SELECT id FROM ventas WHERE ${whereSql}`,
+        parametros
+      );
+      const totalAEliminar = filas.length;
+      if (totalAEliminar === 0) return { exito: true, eliminados: 0 };
+
+      await con.execute(
+        `DELETE FROM items_venta WHERE venta_id IN (SELECT id FROM ventas WHERE ${whereSql})`,
+        parametros
+      );
+
+      await con.execute(
+        `DELETE FROM ventas WHERE ${whereSql}`,
+        parametros
+      );
+
+      return { exito: true, eliminados: totalAEliminar };
+    });
+
+    return resultado;
   });
 
   ipcMain.handle(CANALES.VENTA_ULTIMA, async () => {
@@ -629,6 +811,95 @@ function registrarManejadoresIpc() {
        LIMIT 1`
     );
     return filas[0] || null;
+  });
+
+  ipcMain.handle(CANALES.CAJA_OBTENER_HISTORIAL, async (_evento, { pagina = 1, limite = 50 } = {}) => {
+    const desplazamiento = (pagina - 1) * limite;
+    const filas = await consultar(
+      `SELECT cc.*, u.nombre_usuario AS cerrado_por_nombre
+       FROM cierres_caja cc
+       LEFT JOIN usuarios u ON cc.usuario_id = u.id
+       ORDER BY cc.id DESC
+       LIMIT ? OFFSET ?`,
+      [limite, desplazamiento]
+    );
+    const [conteo] = await consultar(`SELECT COUNT(*) AS total FROM cierres_caja`);
+    return { filas, total: conteo?.total || 0, pagina, limite };
+  });
+
+
+  // ─── REPORTES ──────────────────────────────────────────────────────
+
+  ipcMain.handle(CANALES.REPORTES_CARTERA_CUENTAS, async () => {
+    await sincronizarPreciosLibroMayor();
+
+    const [resumen] = await consultar(`
+      WITH saldos AS (
+        SELECT cuenta_id,
+               COALESCE(SUM(CASE WHEN tipo = 'cargo' THEN monto ELSE -monto END), 0) AS saldo
+        FROM libro_mayor
+        GROUP BY cuenta_id
+      )
+      SELECT
+        COALESCE(SUM(CASE WHEN saldo > 0.005 THEN saldo ELSE 0 END), 0) AS totalDeuda,
+        COUNT(CASE WHEN saldo > 0.005 THEN 1 END) AS totalClientesDeudores
+      FROM saldos
+    `);
+
+    const deudores = await consultar(`
+      WITH cargos AS (
+        SELECT cuenta_id, creado_en,
+               SUM(monto) OVER (PARTITION BY cuenta_id ORDER BY creado_en, id) AS acumulado
+        FROM libro_mayor WHERE tipo = 'cargo'
+      ),
+      pagado AS (
+        SELECT cuenta_id, SUM(monto) AS total_pagado
+        FROM libro_mayor WHERE tipo <> 'cargo' GROUP BY cuenta_id
+      ),
+      mora AS (
+        SELECT ca.cuenta_id, MIN(ca.creado_en) AS deuda_desde
+        FROM cargos ca
+        LEFT JOIN pagado pa ON pa.cuenta_id = ca.cuenta_id
+        WHERE ca.acumulado > COALESCE(pa.total_pagado, 0) + 0.005
+        GROUP BY ca.cuenta_id
+      )
+      SELECT c.id, c.nombre, c.telefono, c.cuit,
+             COALESCE(SUM(CASE WHEN lm.tipo = 'cargo' THEN lm.monto ELSE -lm.monto END), 0) AS saldo,
+             m.deuda_desde
+      FROM clientes c
+      LEFT JOIN libro_mayor lm ON c.id = lm.cuenta_id
+      LEFT JOIN mora m ON m.cuenta_id = c.id
+      WHERE c.eliminado_en IS NULL
+      GROUP BY c.id
+      HAVING saldo > 0.005
+      ORDER BY saldo DESC
+    `);
+
+    let alDia = 0;
+    let mora15 = 0;
+    let mora30 = 0;
+    const ahora = Date.now();
+
+    for (const d of deudores) {
+      if (d.deuda_desde) {
+        const fechaMora = new Date(String(d.deuda_desde).replace(' ', 'T') + 'Z').getTime();
+        const dias = Math.floor((ahora - fechaMora) / 86400000);
+        if (dias >= 30) mora30++;
+        else if (dias >= 15) mora15++;
+        else alDia++;
+      } else {
+        alDia++;
+      }
+    }
+
+    return {
+      totalDeuda: parseFloat(resumen?.totalDeuda || 0),
+      totalClientesDeudores: resumen?.totalClientesDeudores || 0,
+      alDia,
+      mora15,
+      mora30,
+      deudores,
+    };
   });
 
 

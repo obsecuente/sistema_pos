@@ -496,3 +496,49 @@ flowchart LR
 - **Tratamiento local de errores al eliminar cliente:** La confirmación y ejecución de borrado se gestiona de forma autónoma dentro de `DetalleCuentaCliente.jsx`. Si el cliente posee deuda activa, el mensaje de error explicativo se despliega directamente en el banner superior de su ficha en curso, permitiendo al usuario comprender el motivo del bloqueo sin abandonar la pantalla.
 - **Gestión local de repositorio:** Se mantiene el control de versiones en el repositorio local sin realizar envíos automáticos (`git push`) a GitHub salvo indicación expresa.
 
+### 21.6 Sección Reportes (F10) y Cierre de Turno de Caja (F9) — Implementación integral
+- **Inmutabilidad de comprobantes y snapshots históricos:**
+  - Las ventas cerradas mantienen su snapshot inmutable en `items_venta` (`nombre_snapshot`, `precio_unitario_snapshot`, `subtotal`). La actualización por inflación (`sincronizarPreciosLibroMayor`) afecta exclusivamente al saldo vivo en `libro_mayor`, asegurando fidelidad histórica contable y legal para la auditoría de comprobantes.
+- **Arquitectura de navegación en Sección Reportes (`SeccionReportes.jsx`):**
+  - Sistema de 3 vistas navegables tanto con teclado (`Flechas Izquierda / Derecha` + `Enter`) como con ratón:
+    1. `[ Historial de Ventas ]`
+    2. `[ Cuentas Corrientes ]`
+    3. `[ Cierres de Caja ]`
+  - Carga diferida inicial: al ingresar a la sección `F10`, no se realizan consultas pesadas automáticas hasta que el usuario activa expresamente una de las tres pestañas principales.
+  - `ESC` dentro de las vistas devuelve el foco a la barra superior de pestañas.
+- **Vista 1: Historial de Ventas:**
+  - Tarjetas de resumen financiero con cálculo en tiempo real: Total Facturado, Total Efectivo, Total Tarjeta, Total Transferencia, Total Cuenta Corriente y Total Anulado.
+  - Barra de filtros: Período (Hoy, Últimos 7 días, Este mes, Rango personalizado con selector de fechas desde y hasta), Medio de pago (Todos, Efectivo, Tarjeta, Transferencia, Cuenta Corriente), Estado (Todos, Completadas, Anuladas) y buscador de texto por número o cliente.
+  - Tabla de comprobantes sin abreviaturas en encabezados (`Número de ticket`, `Fecha y hora`, `Cliente`, `Medio de pago`, `Estado`, `Total`). Se omitió expresamente la columna de cajero en todas las vistas de reporte.
+  - Navegación de filas con flechas `Arriba` / `Abajo`, paginación optimizada (`LIMIT 50 OFFSET N`) e ingreso con `Enter` a la vista de detalle.
+  - Reimpresión directa con `F8`: envía el duplicado o el ticket anulado rotulado a la ticketera Epson TM-T20III.
+- **Vista in-place de detalle de comprobante (`DetalleVenta.jsx`):**
+  - Despliegue dentro del mismo módulo sustituyendo la tabla (sin modales flotantes innecesarios).
+  - Información exhaustiva del comprobante, desglose de artículos (`Cantidad`, `Descripción / Producto`, `Precio unitario`, `Subtotal`) y total facturado.
+  - Atajos dedicados: `F8` para reimprimir, `SUPR` para anular la venta y `ESC` para regresar al listado.
+  - Modal seguro de anulación de venta (`ModalAnularVenta`): sin solicitud de contraseña ni PIN, con foco inicial predeterminado en "Cancelar" y confirmación transaccional (restitución de stock en `productos` y ajuste compensatorio en `libro_mayor` si fue al fiado).
+- **Herramienta de Purga Histórica (`ModalPurgarVentas`):**
+  - Modal con presets de eliminación rápida: "Más de 30 días de antigüedad" y rango personalizado por calendario con fechas desde y hasta.
+  - Consulta en vivo del conteo de comprobantes a purgar (`soloConteo: true`) antes de ejecutar cualquier acción.
+  - Ejecución en cascada eliminando de forma irreversible los comprobantes y sus correspondientes registros en `items_venta`.
+- **Vista 2: Auditoría de Cartera de Cuentas Corrientes:**
+  - Tarjetas métricas globales: Total Deuda en la Calle, Clientes Deudores, Cuentas al Día (menos de 15 días), Mora Mayor a 15 Días y Mora Mayor a 30 Días.
+  - Tabla de clientes con saldo activo ordenada por mayor deuda, con detalle de antigüedad calculada y estado de mora.
+  - Recorrido con flechas y acceso directo con `Enter` para derivar al módulo de Cuentas Corrientes (`F2`).
+- **Vista 3: Historial de Cierres de Caja:**
+  - Tabla cronológica de arqueos de caja (`cierres_caja`) con desglose de totales por medio de pago, efectivo real contado en gaveta y cálculo visual de la diferencia (exacto, sobrante en verde o faltante en rojo).
+  - Botón integrado `<kbd>F9</kbd> Realizar cierre de turno` que redirige inmediatamente al arqueo de caja.
+- **Arqueo y Cierre de Turno (`SeccionCaja.jsx`):**
+  - Módulo accesible vía atajo global `F9` o desde la vista de reportes.
+  - Consulta automática del resumen de ventas del turno en curso desde el último corte registrado (`CAJA_RESUMEN_TURNO`).
+  - Campo numérico destacado para el ingreso del efectivo real contado en gaveta física.
+  - Cálculo instantáneo en pantalla de la diferencia de caja: indicador dinámico de caja exacta, sobrante a favor o faltante.
+  - Registro de observaciones/notas del turno y confirmación transaccional con `Enter`.
+  - Impresión automática del comprobante térmico de cierre de turno en la ticketera Epson (`workerHardware.js` vía `generarTicketCierreCaja`).
+- **Cumplimiento estricto de estándares UX/UI:**
+  - Cero emojis en todos los componentes.
+  - Cero paréntesis en leyendas, textos o botones de interfaz.
+  - Cero abreviaturas en encabezados de tabla.
+  - Operabilidad 100% por teclado con foco visual y atajos consistentes en toda la aplicación.
+
+

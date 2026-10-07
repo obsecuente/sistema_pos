@@ -57,8 +57,11 @@ contextBridge.exposeInMainWorld('api', {
   },
   ventas: {
     crear: (datosVenta) => invocarSeguro(CANALES.VENTA_CREAR, datosVenta),
-    anular: (ventaId, motivo, pinDuena) => invocarSeguro(CANALES.VENTA_ANULAR, { ventaId, motivo, pinDuena }),
+    anular: (ventaId, motivo) => invocarSeguro(CANALES.VENTA_ANULAR, { ventaId, motivo }),
     obtenerUltima: () => invocarSeguro(CANALES.VENTA_ULTIMA),
+    obtenerHistorial: (filtros) => invocarSeguro(CANALES.VENTAS_OBTENER_HISTORIAL, filtros),
+    obtenerDetalle: (ventaId) => invocarSeguro(CANALES.VENTAS_OBTENER_DETALLE, { ventaId }),
+    purgar: (datosPurga) => invocarSeguro(CANALES.VENTAS_PURGAR, datosPurga),
   },
   libro: {
     obtenerSaldo: (cuentaId) => invocarSeguro(CANALES.LIBRO_OBTENER_SALDO, { cuentaId }),
@@ -75,6 +78,10 @@ contextBridge.exposeInMainWorld('api', {
     cerrar: (datosCierre) => invocarSeguro(CANALES.CAJA_CERRAR, datosCierre),
     ultimoCierre: () => invocarSeguro(CANALES.CAJA_ULTIMO_CIERRE),
     resumenTurno: () => invocarSeguro(CANALES.CAJA_RESUMEN_TURNO),
+    obtenerHistorial: (pagina = 1, limite = 50) => invocarSeguro(CANALES.CAJA_OBTENER_HISTORIAL, { pagina, limite }),
+  },
+  reportes: {
+    carteraCuentas: () => invocarSeguro(CANALES.REPORTES_CARTERA_CUENTAS),
   },
   hardware: {
     imprimirTicket: (datosTicket) => invocarSeguro(CANALES.HARDWARE_IMPRIMIR_TICKET, datosTicket),

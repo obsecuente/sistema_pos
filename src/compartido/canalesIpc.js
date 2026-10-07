@@ -18,6 +18,9 @@ const CANALES = Object.freeze({
   VENTA_CREAR:                'venta:crear',
   VENTA_ANULAR:               'venta:anular',
   VENTA_ULTIMA:               'venta:obtener-ultima',
+  VENTAS_OBTENER_HISTORIAL:   'ventas:obtener-historial',
+  VENTAS_OBTENER_DETALLE:     'ventas:obtener-detalle',
+  VENTAS_PURGAR:              'ventas:purgar',
 
   // ─── Libro Mayor (Cuentas Corrientes) ───
   LIBRO_OBTENER_SALDO:        'libro:obtener-saldo',
@@ -34,6 +37,10 @@ const CANALES = Object.freeze({
   CAJA_CERRAR:                'caja:cerrar',
   CAJA_ULTIMO_CIERRE:         'caja:ultimo-cierre',
   CAJA_RESUMEN_TURNO:         'caja:resumen-turno',
+  CAJA_OBTENER_HISTORIAL:     'caja:obtener-historial',
+
+  // ─── Reportes ───
+  REPORTES_CARTERA_CUENTAS:   'reportes:cartera-cuentas',
 
   // ─── Hardware ───
   HARDWARE_IMPRIMIR_TICKET:   'hardware:imprimir-ticket',

@@ -186,8 +186,11 @@ const mockApi = {
       }
       return { exito: true };
     },
-    anular:        async () => ({ exito: false, error: 'Requiere conexión a base de datos' }),
-    obtenerUltima: async () => null,
+    anular:           async () => ({ exito: true }),
+    obtenerUltima:    async () => null,
+    obtenerHistorial: async () => ({ filas: [], total: 0, pagina: 1, limite: 50, resumen: { totalFacturado: 0, totalEfectivo: 0, totalTarjeta: 0, totalTransferencia: 0, totalCuentaCorriente: 0, totalAnulado: 0 } }),
+    obtenerDetalle:   async () => null,
+    purgar:           async () => ({ exito: true, eliminados: 0 }),
   },
 
   // ─── Libro Mayor (stub) ─────────────────────────────────────────────
@@ -207,9 +210,15 @@ const mockApi = {
 
   // ─── Caja (stub) ────────────────────────────────────────────────────
   caja: {
-    cerrar:       async () => ({ exito: false, error: 'Requiere conexión a base de datos' }),
-    ultimoCierre: async () => null,
-    resumenTurno: async () => ({ desde: null, resumen: [] }),
+    cerrar:           async () => ({ exito: true, id: 1 }),
+    ultimoCierre:     async () => null,
+    resumenTurno:     async () => ({ desde: null, resumen: [] }),
+    obtenerHistorial: async () => ({ filas: [], total: 0, pagina: 1, limite: 50 }),
+  },
+
+  // ─── Reportes (stub) ────────────────────────────────────────────────
+  reportes: {
+    carteraCuentas:   async () => ({ totalDeuda: 0, totalClientesDeudores: 0, alDia: 0, mora15: 0, mora30: 0, deudores: [] }),
   },
 
   // ─── Hardware (stub) ────────────────────────────────────────────────

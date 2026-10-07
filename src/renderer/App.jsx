@@ -16,6 +16,8 @@ import useTiendaVentas from './store/useTiendaVentas';
 import { useAtajosTeclado } from './hooks/useAtajosTeclado';
 import SeccionProductos from './componentes/SeccionProductos';
 import SeccionCuentas from './componentes/SeccionCuentas';
+import SeccionCaja from './componentes/SeccionCaja';
+import SeccionReportes from './componentes/SeccionReportes';
 import ModalCobro from './componentes/ModalCobro';
 import ModalCliente from './componentes/ModalCliente';
 
@@ -726,8 +728,8 @@ export default function App() {
       case SECCIONES.VENTAS: return (<><BarraPestanas /><ContenidoVenta /></>);
       case SECCIONES.CUENTAS_CORRIENTES: return <SeccionCuentas />;
       case SECCIONES.PRODUCTOS: return <SeccionProductos />;
-      case SECCIONES.CIERRE_CAJA: return <SeccionPlaceholder titulo="Cierre de Caja" tecla="F9" />;
-      case SECCIONES.REPORTES: return <SeccionPlaceholder titulo="Reportes" tecla="F10" />;
+      case SECCIONES.CIERRE_CAJA: return <SeccionCaja />;
+      case SECCIONES.REPORTES: return <SeccionReportes />;
       default: return null;
     }
   };

@@ -251,12 +251,16 @@ function generarTicketVenta(datos) {
     // Intentar imprimir logo NV (si está grabado)
     ESCPOS.LOGO_NV,
     ESCPOS.avanzarLineas(1),
-    // Encabezado
     ESCPOS.NEGRITA_ON,
     ESCPOS.TAMANO_DOBLE,
     ESCPOS.texto(`${datos.nombreNegocio || 'EL RINCON DEL GATO'}\n`),
     ESCPOS.TAMANO_NORMAL,
     ESCPOS.NEGRITA_OFF,
+    ...(datos.rotulo ? [
+      ESCPOS.NEGRITA_ON,
+      ESCPOS.texto(`${datos.rotulo}\n`),
+      ESCPOS.NEGRITA_OFF,
+    ] : []),
     ESCPOS.texto(`${datos.direccion || ''}\n`),
     ESCPOS.texto(`${datos.fecha}\n`),
     ESCPOS.SEPARADOR,
@@ -349,6 +353,58 @@ function generarReciboPago(datos) {
   return Buffer.concat(partes);
 }
 
+/**
+ * Genera el buffer ESC/POS para un comprobante de cierre de caja.
+ * @param {object} datos
+ * @returns {Buffer}
+ */
+function generarTicketCierreCaja(datos) {
+  const partes = [
+    ESCPOS.INICIALIZAR,
+    ESCPOS.ALINEAR_CENTRO,
+    ESCPOS.NEGRITA_ON,
+    ESCPOS.TAMANO_DOBLE,
+    ESCPOS.texto(`${datos.nombreNegocio || 'EL RINCON DEL GATO'}\n`),
+    ESCPOS.TAMANO_NORMAL,
+    ESCPOS.NEGRITA_OFF,
+    ESCPOS.NEGRITA_ON,
+    ESCPOS.texto('CIERRE DE CAJA / TURNO\n'),
+    ESCPOS.NEGRITA_OFF,
+    ESCPOS.texto(`Fecha: ${datos.fecha}\n`),
+    ESCPOS.SEPARADOR,
+
+    ESCPOS.ALINEAR_IZQUIERDA,
+    ESCPOS.texto(`Cierre Nro: ${datos.numeroCierre || '-'}\n`),
+    ESCPOS.texto(`Desde:      ${datos.periodoDesde || '-'}\n`),
+    ESCPOS.texto(`Hasta:      ${datos.periodoHasta || datos.fecha}\n`),
+    ESCPOS.SEPARADOR,
+
+    ESCPOS.texto(`Efectivo en sistema:      $${Number(datos.totalEfectivo || 0).toFixed(2)}\n`),
+    ESCPOS.texto(`Tarjeta en sistema:       $${Number(datos.totalTarjeta || 0).toFixed(2)}\n`),
+    ESCPOS.texto(`Transferencia en sistema: $${Number(datos.totalTransferencia || 0).toFixed(2)}\n`),
+    ESCPOS.texto(`Cuenta corriente / Fiado: $${Number(datos.totalFiado || 0).toFixed(2)}\n`),
+    ESCPOS.SEPARADOR,
+
+    ESCPOS.texto(`Total recaudado:          $${Number(datos.totalGeneral || 0).toFixed(2)}\n`),
+    ESCPOS.texto(`Efectivo real en gaveta:  $${Number(datos.montoEnCaja || 0).toFixed(2)}\n`),
+    ESCPOS.NEGRITA_ON,
+    ESCPOS.texto(`Diferencia de caja:       $${Number(datos.diferencia || 0).toFixed(2)}\n`),
+    ESCPOS.NEGRITA_OFF,
+  ];
+
+  if (datos.notas) {
+    partes.push(ESCPOS.SEPARADOR);
+    partes.push(ESCPOS.texto(`Notas: ${datos.notas}\n`));
+  }
+
+  partes.push(ESCPOS.SEPARADOR);
+  partes.push(ESCPOS.ALINEAR_CENTRO);
+  partes.push(ESCPOS.avanzarLineas(3));
+  partes.push(ESCPOS.CORTE_PARCIAL);
+
+  return Buffer.concat(partes);
+}
+
 
 // ============================================================================
 // COMUNICACIÓN CON EL PROCESO PRINCIPAL
@@ -364,8 +420,14 @@ function enviarEstado(estado) {
 process.on('message', async (mensaje) => {
   switch (mensaje.tipo) {
     case 'imprimir-ticket': {
-      const buffer = generarTicketVenta(mensaje.datos);
-      const resultado = await agregarACola(buffer, `ticket-venta-${mensaje.datos.numeroVenta}`);
+      const esCierre = mensaje.datos && mensaje.datos.tipo === 'cierre_caja';
+      const buffer = esCierre
+        ? generarTicketCierreCaja(mensaje.datos)
+        : generarTicketVenta(mensaje.datos);
+      const etiquetaCola = esCierre
+        ? 'cierre-caja'
+        : `ticket-venta-${mensaje.datos.numeroVenta}`;
+      const resultado = await agregarACola(buffer, etiquetaCola);
       if (process.send) {
         process.send({ tipo: 'resultado-impresion', id: mensaje.id, ...resultado });
       }
