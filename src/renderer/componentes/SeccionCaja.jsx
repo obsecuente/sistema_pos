@@ -271,25 +271,25 @@ export default function SeccionCaja() {
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
               <span className="text-xs text-gray-400 uppercase font-medium block">Efectivo</span>
               <span className="text-2xl font-black text-white mt-1 block">{formatearPrecio(totalEfectivo)}</span>
-              <span className="text-xs text-gray-500 mt-1 block">A rendir en gaveta</span>
+
             </div>
 
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
               <span className="text-xs text-gray-400 uppercase font-medium block">Tarjeta</span>
               <span className="text-2xl font-black text-white mt-1 block">{formatearPrecio(totalTarjeta)}</span>
-              <span className="text-xs text-gray-500 mt-1 block">Débito y Crédito</span>
+
             </div>
 
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
               <span className="text-xs text-gray-400 uppercase font-medium block">Transferencia</span>
               <span className="text-2xl font-black text-white mt-1 block">{formatearPrecio(totalTransferencia)}</span>
-              <span className="text-xs text-gray-500 mt-1 block">Bancos y billeteras</span>
+
             </div>
 
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
               <span className="text-xs text-gray-400 uppercase font-medium block">Cuenta Corriente</span>
               <span className="text-2xl font-black text-white mt-1 block">{formatearPrecio(totalFiado)}</span>
-              <span className="text-xs text-gray-500 mt-1 block">Fiado acumulado</span>
+
             </div>
 
             <div className="bg-primario-900/40 border border-primario-500/50 rounded-xl p-4">
