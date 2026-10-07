@@ -79,6 +79,10 @@ contextBridge.exposeInMainWorld('api', {
     ultimoCierre: () => invocarSeguro(CANALES.CAJA_ULTIMO_CIERRE),
     resumenTurno: () => invocarSeguro(CANALES.CAJA_RESUMEN_TURNO),
     obtenerHistorial: (pagina = 1, limite = 50) => invocarSeguro(CANALES.CAJA_OBTENER_HISTORIAL, { pagina, limite }),
+    estadoTurno: () => invocarSeguro(CANALES.CAJA_ESTADO_TURNO),
+    abrirTurno: (datos) => invocarSeguro(CANALES.CAJA_ABRIR_TURNO, datos),
+    registrarMovimiento: (datos) => invocarSeguro(CANALES.CAJA_REGISTRAR_MOVIMIENTO, datos),
+    obtenerMovimientos: (datos) => invocarSeguro(CANALES.CAJA_OBTENER_MOVIMIENTOS, datos),
   },
   reportes: {
     carteraCuentas: () => invocarSeguro(CANALES.REPORTES_CARTERA_CUENTAS),

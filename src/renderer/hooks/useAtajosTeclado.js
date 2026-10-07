@@ -4,14 +4,12 @@
 // Mapeo completo:
 //   F1:  Nueva venta (pestaña paralela) / Ir a Ventas
 //   F2:  Cuentas Corrientes
-//   F3:  Cobrar / Cerrar venta (manejado en ContenidoVenta)
-//   F4:  Buscar / ABM productos
-//   F5:  Anular venta completa (manejado en ContenidoVenta)
-//   F6:  Reimprimir etiquetas de góndola (pendiente)
-//   F7:  Pago rápido de cuenta corriente
-//   F8:  (Disponible)
-//   F9:  Cierre de caja
-//   F10: Reportes rápidos
+//   F3:  Productos (Catálogo y ABM)
+//   F4:  Caja y Arqueo de Turno
+//   F5:  Reportes y Auditoría
+//   F6:  Cobrar venta (en Ventas) / Registrar pago (en Cuentas)
+//   F7:  Anular venta completa (en Ventas)
+//   F8:  Ingreso / Egreso de efectivo (Caja Chica)
 //   Esc: Cancelar / Cerrar modal
 //
 // NOTA: Este hook se registra DESPUÉS del hook del lector de código de barras
@@ -44,7 +42,7 @@ export function useAtajosTeclado() {
     const enInput = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName);
 
     switch (evento.key) {
-      // ─── F1: Nueva pestaña de venta ─────────────────────────────
+      // ─── F1: Nueva pestaña de venta / Ir a Ventas ──────────────
       case 'F1':
         evento.preventDefault();
         const estadoApp = useTiendaApp.getState();
@@ -61,33 +59,20 @@ export function useAtajosTeclado() {
         irASeccion(SECCIONES.CUENTAS_CORRIENTES);
         break;
 
-      // ─── F4: Buscar / ABM Productos ─────────────────────────────
-      case 'F4':
+      // ─── F3: Productos (Catálogo y ABM) ─────────────────────────
+      case 'F3':
         evento.preventDefault();
         irASeccion(SECCIONES.PRODUCTOS);
         break;
 
-      // ─── F6: Reimprimir etiquetas ───────────────────────────────
-      case 'F6':
-        evento.preventDefault();
-        // Futuro: modal de selección de productos para etiquetas
-        console.log('[Atajos] F6: Reimprimir etiquetas (pendiente)');
-        break;
-
-      // ─── F7: Pago rápido de cuenta corriente ────────────────────
-      case 'F7':
-        evento.preventDefault();
-        abrirModal('pago-rapido-cc');
-        break;
-
-      // ─── F9: Cierre de caja ─────────────────────────────────────
-      case 'F9':
+      // ─── F4: Caja y Arqueo ──────────────────────────────────────
+      case 'F4':
         evento.preventDefault();
         irASeccion(SECCIONES.CIERRE_CAJA);
         break;
 
-      // ─── F10: Reportes ──────────────────────────────────────────
-      case 'F10':
+      // ─── F5: Reportes y Auditoría ───────────────────────────────
+      case 'F5':
         evento.preventDefault();
         irASeccion(SECCIONES.REPORTES);
         break;

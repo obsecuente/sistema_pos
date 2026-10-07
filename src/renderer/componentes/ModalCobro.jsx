@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 const METODOS = [
   { id: 'efectivo', label: 'Efectivo' },
   { id: 'tarjeta', label: 'Tarjeta' },
-  { id: 'billetera', label: 'Billetera Virtual' },
+  { id: 'transferencia', label: 'Transferencia' },
   { id: 'cuenta_corriente', label: 'Cuenta Corriente' },
 ];
 

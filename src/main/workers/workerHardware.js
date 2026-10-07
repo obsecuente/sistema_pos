@@ -374,21 +374,27 @@ function generarTicketCierreCaja(datos) {
     ESCPOS.SEPARADOR,
 
     ESCPOS.ALINEAR_IZQUIERDA,
-    ESCPOS.texto(`Cierre Nro: ${datos.numeroCierre || '-'}\n`),
-    ESCPOS.texto(`Desde:      ${datos.periodoDesde || '-'}\n`),
-    ESCPOS.texto(`Hasta:      ${datos.periodoHasta || datos.fecha}\n`),
+    ESCPOS.texto(`Cierre Nro:        ${datos.numeroCierre || '-'}\n`),
+    ESCPOS.texto(`Desde:             ${datos.periodoDesde || '-'}\n`),
+    ESCPOS.texto(`Hasta:             ${datos.periodoHasta || datos.fecha}\n`),
     ESCPOS.SEPARADOR,
 
-    ESCPOS.texto(`Efectivo en sistema:      $${Number(datos.totalEfectivo || 0).toFixed(2)}\n`),
-    ESCPOS.texto(`Tarjeta en sistema:       $${Number(datos.totalTarjeta || 0).toFixed(2)}\n`),
-    ESCPOS.texto(`Transferencia en sistema: $${Number(datos.totalTransferencia || 0).toFixed(2)}\n`),
-    ESCPOS.texto(`Cuenta corriente / Fiado: $${Number(datos.totalFiado || 0).toFixed(2)}\n`),
+    ESCPOS.texto(`Monto inicial:     $${Number(datos.montoInicial || 0).toFixed(2)}\n`),
+    ESCPOS.texto(`Ventas efectivo:   $${Number(datos.totalEfectivo || 0).toFixed(2)}\n`),
+    ESCPOS.texto(`Ingresos manuales: $${Number(datos.totalIngresos || 0).toFixed(2)}\n`),
+    ESCPOS.texto(`Egresos manuales:  $${Number(datos.totalEgresos || 0).toFixed(2)}\n`),
+    ESCPOS.texto(`Efectivo esperado: $${Number(datos.efectivoEsperado != null ? datos.efectivoEsperado : (Number(datos.montoInicial || 0) + Number(datos.totalEfectivo || 0) + Number(datos.totalIngresos || 0) - Number(datos.totalEgresos || 0))).toFixed(2)}\n`),
     ESCPOS.SEPARADOR,
 
-    ESCPOS.texto(`Total recaudado:          $${Number(datos.totalGeneral || 0).toFixed(2)}\n`),
-    ESCPOS.texto(`Efectivo real en gaveta:  $${Number(datos.montoEnCaja || 0).toFixed(2)}\n`),
+    ESCPOS.texto(`Tarjeta:           $${Number(datos.totalTarjeta || 0).toFixed(2)}\n`),
+    ESCPOS.texto(`Transferencia:     $${Number(datos.totalTransferencia || 0).toFixed(2)}\n`),
+    ESCPOS.texto(`Cuenta corriente:  $${Number(datos.totalFiado || 0).toFixed(2)}\n`),
+    ESCPOS.SEPARADOR,
+
+    ESCPOS.texto(`Total recaudado:   $${Number(datos.totalGeneral || 0).toFixed(2)}\n`),
+    ESCPOS.texto(`Efectivo en caja:  $${Number(datos.montoEnCaja || 0).toFixed(2)}\n`),
     ESCPOS.NEGRITA_ON,
-    ESCPOS.texto(`Diferencia de caja:       $${Number(datos.diferencia || 0).toFixed(2)}\n`),
+    ESCPOS.texto(`Diferencia:        $${Number(datos.diferencia || 0).toFixed(2)}\n`),
     ESCPOS.NEGRITA_OFF,
   ];
 
@@ -401,6 +407,48 @@ function generarTicketCierreCaja(datos) {
   partes.push(ESCPOS.ALINEAR_CENTRO);
   partes.push(ESCPOS.avanzarLineas(3));
   partes.push(ESCPOS.CORTE_PARCIAL);
+
+  return Buffer.concat(partes);
+}
+
+/**
+ * Genera el buffer ESC/POS para un comprobante de ingreso/egreso de efectivo (Caja Chica).
+ * @param {object} datos
+ * @returns {Buffer}
+ */
+function generarTicketMovimientoCaja(datos) {
+  const esIngreso = datos.tipoMovimiento === 'ingreso';
+  const titulo = esIngreso ? 'INGRESO DE EFECTIVO' : 'RETIRO DE EFECTIVO';
+
+  const partes = [
+    ESCPOS.INICIALIZAR,
+    ESCPOS.ALINEAR_CENTRO,
+    ESCPOS.NEGRITA_ON,
+    ESCPOS.TAMANO_DOBLE,
+    ESCPOS.texto(`${datos.nombreNegocio || 'EL RINCON DEL GATO'}\n`),
+    ESCPOS.TAMANO_NORMAL,
+    ESCPOS.NEGRITA_OFF,
+    ESCPOS.NEGRITA_ON,
+    ESCPOS.texto(`*** ${titulo} ***\n`),
+    ESCPOS.NEGRITA_OFF,
+    ESCPOS.texto(`Fecha: ${datos.fecha}\n`),
+    ESCPOS.SEPARADOR,
+
+    ESCPOS.ALINEAR_IZQUIERDA,
+    ESCPOS.texto(`Concepto: ${datos.motivo || (esIngreso ? 'Ingreso de dinero' : 'Retiro de caja')}\n`),
+    ESCPOS.SEPARADOR,
+
+    ESCPOS.NEGRITA_ON,
+    ESCPOS.TAMANO_DOBLE,
+    ESCPOS.texto(`MONTO: $${Number(datos.monto || 0).toFixed(2)}\n`),
+    ESCPOS.TAMANO_NORMAL,
+    ESCPOS.NEGRITA_OFF,
+
+    ESCPOS.SEPARADOR,
+    ESCPOS.ALINEAR_CENTRO,
+    ESCPOS.avanzarLineas(3),
+    ESCPOS.CORTE_PARCIAL,
+  ];
 
   return Buffer.concat(partes);
 }
@@ -420,13 +468,20 @@ function enviarEstado(estado) {
 process.on('message', async (mensaje) => {
   switch (mensaje.tipo) {
     case 'imprimir-ticket': {
-      const esCierre = mensaje.datos && mensaje.datos.tipo === 'cierre_caja';
-      const buffer = esCierre
-        ? generarTicketCierreCaja(mensaje.datos)
-        : generarTicketVenta(mensaje.datos);
-      const etiquetaCola = esCierre
-        ? 'cierre-caja'
-        : `ticket-venta-${mensaje.datos.numeroVenta}`;
+      let buffer;
+      let etiquetaCola;
+
+      if (mensaje.datos && mensaje.datos.tipo === 'cierre_caja') {
+        buffer = generarTicketCierreCaja(mensaje.datos);
+        etiquetaCola = 'cierre-caja';
+      } else if (mensaje.datos && mensaje.datos.tipo === 'movimiento_caja') {
+        buffer = generarTicketMovimientoCaja(mensaje.datos);
+        etiquetaCola = `movimiento-caja-${mensaje.datos.tipoMovimiento}`;
+      } else {
+        buffer = generarTicketVenta(mensaje.datos);
+        etiquetaCola = `ticket-venta-${mensaje.datos.numeroVenta}`;
+      }
+
       const resultado = await agregarACola(buffer, etiquetaCola);
       if (process.send) {
         process.send({ tipo: 'resultado-impresion', id: mensaje.id, ...resultado });

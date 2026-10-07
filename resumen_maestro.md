@@ -541,4 +541,36 @@ flowchart LR
   - Cero abreviaturas en encabezados de tabla.
   - Operabilidad 100% por teclado con foco visual y atajos consistentes en toda la aplicación.
 
+### 21.7 Reestructuración Numérica de Atajos (F1 a F8), Apertura de Turno y Caja Chica
+- **Reordenamiento numérico estricto de la botonera principal:**
+  - Se reconfiguraron las secciones de navegación y acciones rápidas en una secuencia numérica continua:
+    - **F1:** Ventas (o nueva pestaña paralela si ya está en Ventas).
+    - **F2:** Cuentas Corrientes.
+    - **F3:** Productos (Catálogo y ABM de artículos, reubicado desde F4).
+    - **F4:** Caja y Arqueo (reubicado desde F9).
+    - **F5:** Reportes y Auditoría (reubicado desde F10).
+    - **F6:** Cobrar Venta (en Ventas) y Registrar Pago de Cliente (en Cuentas Corrientes, reubicado desde F3).
+    - **F7:** Anular Venta Actual (reubicado desde F5).
+    - **F8:** Movimiento de Caja Chica (Ingreso o Egreso manual de efectivo).
+- **Corrección contable del medio de pago Transferencia / QR:**
+  - Se subsanó la discrepancia en `ModalCobro.jsx` donde la opción transfería el identificador `id: 'billetera'`, provocando que las consultas agrupadas por `'transferencia'` computaran `$ 0.00`.
+  - Se unificó a `'transferencia'` en toda la aplicación y se ejecutó la migración retroactiva en SQLite (`UPDATE ventas SET medio_pago = 'transferencia' WHERE medio_pago = 'billetera'`), integrando de inmediato todas las ventas previas de billeteras digitales en las métricas de Caja y Reportes.
+- **Apertura de Turno e Inicio del Día (`ModalAperturaCaja.jsx`):**
+  - Al iniciar la aplicación o tras haberse efectuado un cierre de caja, el sistema verifica el estado del turno (`CAJA_ESTADO_TURNO`). Si no existe un turno abierto, se despliega automáticamente el modal de apertura requiriendo ingresar el monto en efectivo disponible en gaveta para dar cambio.
+  - Se asienta el registro en la nueva tabla `movimientos_caja` (`tipo = 'apertura'`).
+- **Flujo de Ingresos y Egresos de Efectivo (`ModalMovimientoCaja.jsx`):**
+  - Modal accesible con `F8` desde la sección de Ventas y desde la sección de Caja.
+  - Selector navegable entre *Ingreso de Dinero* y *Egreso o Retiro*. Requiere monto numérico obligatorio (> 0) y motivo opcional.
+  - Generación de comprobante térmico en la ticketera Epson TM-T20III con encabezado centrado `*** INGRESO DE EFECTIVO ***` o `*** RETIRO DE EFECTIVO ***`.
+- **Ecuación contable de Arqueo y Balance en Caja (`SeccionCaja.jsx`):**
+  - Se eliminaron los textos secundarios redundantes debajo de las cifras principales de recaudación.
+  - Se incorporó el panel de desglose visible de flujo de efectivo:
+    $$\text{Efectivo Esperado en Gaveta} = \text{Monto Inicial} + \text{Ventas en Efectivo} + \text{Ingresos Manuales} - \text{Egresos / Retiros}$$
+  - El arqueo físico compara el dinero contado en gaveta contra el efectivo esperado, indicando con precisión si la caja está exacta, con sobrante o con faltante.
+  - Se extendió la tabla `cierres_caja` con los campos `monto_inicial`, `total_ingresos` y `total_egresos`.
+- **Preservación de estándares UX/UI:**
+  - Sin emojis, sin abreviaturas en encabezados y sin textos entre paréntesis en toda la interfaz.
+  - Repositorio bajo control de versiones local sin envíos automáticos remotos.
+
+
 

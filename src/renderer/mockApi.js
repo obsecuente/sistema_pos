@@ -210,10 +210,14 @@ const mockApi = {
 
   // ─── Caja (stub) ────────────────────────────────────────────────────
   caja: {
-    cerrar:           async () => ({ exito: true, id: 1 }),
-    ultimoCierre:     async () => null,
-    resumenTurno:     async () => ({ desde: null, resumen: [] }),
-    obtenerHistorial: async () => ({ filas: [], total: 0, pagina: 1, limite: 50 }),
+    cerrar:              async () => ({ exito: true, id: 1 }),
+    ultimoCierre:        async () => null,
+    resumenTurno:        async () => ({ desde: null, resumen: [], montoInicial: 0, totalIngresos: 0, totalEgresos: 0 }),
+    obtenerHistorial:    async () => ({ filas: [], total: 0, pagina: 1, limite: 50 }),
+    estadoTurno:         async () => ({ cajaAbierta: true, montoInicial: 5000, totalIngresos: 0, totalEgresos: 0, desde: new Date().toISOString() }),
+    abrirTurno:          async ({ montoInicial }) => ({ exito: true, id: 1, montoInicial }),
+    registrarMovimiento: async () => ({ exito: true, id: 1 }),
+    obtenerMovimientos:  async () => [],
   },
 
   // ─── Reportes (stub) ────────────────────────────────────────────────

@@ -229,7 +229,7 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
         return;
       }
 
-      if (e.key === 'F3') {
+      if (e.key === 'F6') {
         e.preventDefault();
         setModalPago(true);
         return;
@@ -341,7 +341,7 @@ export default function DetalleCuentaCliente({ cliente, alCerrar, alEliminar, al
       {/* BOTONERA */}
       <div className="bg-gray-800/80 p-3 flex items-center gap-3 border-b border-gray-700 text-sm shrink-0">
         <button onClick={() => setModalPago(true)} className="bg-primario-600 hover:bg-primario-500 text-white px-5 py-2.5 rounded-lg font-bold transition-colors flex items-center focus:outline-none focus:ring-2 focus:ring-primario-400">
-          <kbd className="bg-primario-800 px-2 py-1 rounded text-white mr-2">F3</kbd>
+          <kbd className="bg-primario-800 px-2 py-1 rounded text-white mr-2">F6</kbd>
           Registrar Pago
         </button>
 

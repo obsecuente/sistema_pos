@@ -889,7 +889,7 @@ function VistaCierresCaja({ alIrACierreTurno, focoEnPestanas, alDevolverFoco }) 
           onClick={alIrACierreTurno}
           className="bg-primario-600 hover:bg-primario-500 text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center gap-2 shadow-lg shadow-primario-900/40"
         >
-          <kbd className="bg-primario-800 px-2 py-0.5 rounded text-white text-xs">F9</kbd>
+          <kbd className="bg-primario-800 px-2 py-0.5 rounded text-white text-xs">F4</kbd>
           Realizar cierre de turno
         </button>
       </div>

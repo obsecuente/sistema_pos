@@ -48,10 +48,31 @@ function inicializarPool() {
         CREATE TABLE ventas ( id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER NOT NULL, cliente_id INTEGER NULL, medio_pago TEXT NOT NULL, porcentaje_recargo REAL NOT NULL DEFAULT 0.00, subtotal REAL NOT NULL, total REAL NOT NULL, estado TEXT NOT NULL DEFAULT 'completada', anulada_por INTEGER NULL, motivo_anulacion TEXT NULL, creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP );
         CREATE TABLE items_venta ( id INTEGER PRIMARY KEY AUTOINCREMENT, venta_id INTEGER NOT NULL, producto_id INTEGER NULL, nombre_snapshot TEXT NOT NULL, cantidad REAL NOT NULL, precio_unitario_snapshot REAL NOT NULL, subtotal REAL NOT NULL, es_manual INTEGER NOT NULL DEFAULT 0 );
         CREATE TABLE libro_mayor ( id INTEGER PRIMARY KEY AUTOINCREMENT, cuenta_id INTEGER NOT NULL, usuario_id INTEGER NOT NULL, venta_id INTEGER NULL, tipo TEXT NOT NULL, monto REAL NOT NULL, concepto TEXT NULL, detalle_items TEXT NULL, creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP );
-        CREATE TABLE cierres_caja ( id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER NOT NULL, total_efectivo REAL NOT NULL DEFAULT 0.00, total_tarjeta REAL NOT NULL DEFAULT 0.00, total_transferencia REAL NOT NULL DEFAULT 0.00, total_fiado REAL NOT NULL DEFAULT 0.00, monto_en_caja REAL NOT NULL DEFAULT 0.00, diferencia REAL NOT NULL DEFAULT 0.00, notas TEXT NULL, periodo_desde DATETIME NOT NULL, periodo_hasta DATETIME NOT NULL, creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP );
+        CREATE TABLE cierres_caja ( id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER NOT NULL, total_efectivo REAL NOT NULL DEFAULT 0.00, total_tarjeta REAL NOT NULL DEFAULT 0.00, total_transferencia REAL NOT NULL DEFAULT 0.00, total_fiado REAL NOT NULL DEFAULT 0.00, monto_en_caja REAL NOT NULL DEFAULT 0.00, diferencia REAL NOT NULL DEFAULT 0.00, monto_inicial REAL NOT NULL DEFAULT 0.00, total_ingresos REAL NOT NULL DEFAULT 0.00, total_egresos REAL NOT NULL DEFAULT 0.00, notas TEXT NULL, periodo_desde DATETIME NOT NULL, periodo_hasta DATETIME NOT NULL, creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP );
+        CREATE TABLE movimientos_caja ( id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER NOT NULL, tipo TEXT NOT NULL, monto REAL NOT NULL, motivo TEXT NULL, creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP );
         INSERT INTO usuarios (nombre_usuario, pin_hash, rol) VALUES ('duena', '$2b$10$placeholder_cambiar_en_primer_inicio', 'duena');
       `, (err) => {
          if (err) console.error('[BD] Error creando tablas:', err);
+      });
+    } else {
+      // Migraciones seguras para bases de datos existentes
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS movimientos_caja ( id INTEGER PRIMARY KEY AUTOINCREMENT, usuario_id INTEGER NOT NULL, tipo TEXT NOT NULL, monto REAL NOT NULL, motivo TEXT NULL, creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP );
+        UPDATE ventas SET medio_pago = 'transferencia' WHERE medio_pago = 'billetera';
+      `);
+      db.all("PRAGMA table_info(cierres_caja)", (errCols, columnas) => {
+        if (!errCols && columnas) {
+          const nombres = columnas.map(c => c.name);
+          if (!nombres.includes('monto_inicial')) {
+            db.run("ALTER TABLE cierres_caja ADD COLUMN monto_inicial REAL NOT NULL DEFAULT 0.00");
+          }
+          if (!nombres.includes('total_ingresos')) {
+            db.run("ALTER TABLE cierres_caja ADD COLUMN total_ingresos REAL NOT NULL DEFAULT 0.00");
+          }
+          if (!nombres.includes('total_egresos')) {
+            db.run("ALTER TABLE cierres_caja ADD COLUMN total_egresos REAL NOT NULL DEFAULT 0.00");
+          }
+        }
       });
     }
   });

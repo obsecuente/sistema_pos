@@ -1,17 +1,20 @@
 // ============================================================================
-// SeccionCaja.jsx — Arqueo y Cierre de Turno de Caja (F9)
+// SeccionCaja.jsx — Arqueo y Cierre de Turno de Caja (F4)
 //
 // Responsabilidades:
 //   - Obtener el resumen de ventas del turno actual desde el último cierre
 //   - Mostrar totales discriminados por medio de pago (Efectivo, Tarjeta, Transferencia, Fiado)
-//   - Permitir el ingreso del monto de efectivo real contado en gaveta
-//   - Calcular en tiempo real la diferencia de caja (sobrante o faltante)
+//   - Desglosar el flujo de caja chica (Monto inicial + Ventas + Ingresos - Egresos)
+//   - Calcular en tiempo real el efectivo esperado y la diferencia de caja (sobrante o faltante)
+//   - Permitir registrar ingresos y egresos de efectivo manuales (F8)
 //   - Registrar el cierre de caja de forma transaccional e imprimir comprobante térmico
 //   - Operabilidad total con teclado (Enter, Escape, Tab, flechas)
+//   - Cumplimiento estricto: sin emojis, sin paréntesis, sin textos secundarios redundantes
 // ============================================================================
 
 import React, { useState, useEffect, useRef } from 'react';
 import useTiendaApp, { SECCIONES } from '../store/useTiendaApp';
+import ModalMovimientoCaja from './ModalMovimientoCaja';
 
 function parsearFecha(s) {
   if (!s) return null;
@@ -32,12 +35,14 @@ export default function SeccionCaja() {
   const irASeccion = useTiendaApp((s) => s.irASeccion);
 
   const [cargando, setCargando] = useState(true);
-  const [datosTurno, setDatosTurno] = useState({ desde: null, resumen: [] });
+  const [datosTurno, setDatosTurno] = useState({ desde: null, resumen: [], montoInicial: 0, totalIngresos: 0, totalEgresos: 0 });
   const [montoEnCaja, setMontoEnCaja] = useState('');
   const [notas, setNotas] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [cierreExitoso, setCierreExitoso] = useState(null);
   const [mensajeError, setMensajeError] = useState(null);
+  const [mensajeExito, setMensajeExito] = useState(null);
+  const [modalMovimientoAbierto, setModalMovimientoAbierto] = useState(false);
 
   const inputMontoRef = useRef(null);
   const textareaNotasRef = useRef(null);
@@ -47,7 +52,7 @@ export default function SeccionCaja() {
     setMensajeError(null);
     try {
       const data = await window.api.caja.resumenTurno();
-      setDatosTurno(data || { desde: null, resumen: [] });
+      setDatosTurno(data || { desde: null, resumen: [], montoInicial: 0, totalIngresos: 0, totalEgresos: 0 });
     } catch (err) {
       console.error('[SeccionCaja] Error al cargar resumen de turno:', err);
       setMensajeError('Error al comunicarse con la base de datos para obtener el resumen');
@@ -61,10 +66,17 @@ export default function SeccionCaja() {
   }, []);
 
   useEffect(() => {
-    if (!cargando && inputMontoRef.current) {
+    if (!cargando && !modalMovimientoAbierto && inputMontoRef.current) {
       inputMontoRef.current.focus();
     }
-  }, [cargando]);
+  }, [cargando, modalMovimientoAbierto]);
+
+  useEffect(() => {
+    if (mensajeExito) {
+      const t = setTimeout(() => setMensajeExito(null), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [mensajeExito]);
 
   // Cálculos contables del turno
   let totalEfectivo = 0;
@@ -80,19 +92,24 @@ export default function SeccionCaja() {
 
     if (r.medio_pago === 'efectivo') totalEfectivo += total;
     else if (r.medio_pago === 'tarjeta') totalTarjeta += total;
-    else if (r.medio_pago === 'transferencia') totalTransferencia += total;
+    else if (r.medio_pago === 'transferencia' || r.medio_pago === 'billetera') totalTransferencia += total;
     else if (r.medio_pago === 'cuenta_corriente') totalFiado += total;
   });
 
+  const montoInicial = parseFloat(datosTurno.montoInicial || 0);
+  const totalIngresos = parseFloat(datosTurno.totalIngresos || 0);
+  const totalEgresos = parseFloat(datosTurno.totalEgresos || 0);
+
   const totalGeneral = totalEfectivo + totalTarjeta + totalTransferencia + totalFiado;
+  const efectivoEsperado = montoInicial + totalEfectivo + totalIngresos - totalEgresos;
 
   const montoContado = parseFloat(montoEnCaja || 0);
   const hayMontoIngresado = montoEnCaja.trim() !== '';
-  const diferencia = hayMontoIngresado ? montoContado - totalEfectivo : 0;
+  const diferencia = hayMontoIngresado ? montoContado - efectivoEsperado : 0;
 
   // Manejo de confirmación de cierre
   const ejecutarCierre = async () => {
-    if (guardando || cierreExitoso) return;
+    if (guardando || cierreExitoso || modalMovimientoAbierto) return;
     setGuardando(true);
     setMensajeError(null);
 
@@ -108,6 +125,9 @@ export default function SeccionCaja() {
         totalFiado,
         montoEnCaja: montoContado,
         diferencia,
+        montoInicial,
+        totalIngresos,
+        totalEgresos,
         notas: notas.trim() || null,
         periodoDesde: datosTurno.desde || '2000-01-01 00:00:00',
       };
@@ -133,6 +153,10 @@ export default function SeccionCaja() {
         totalTransferencia,
         totalFiado,
         totalGeneral,
+        montoInicial,
+        totalIngresos,
+        totalEgresos,
+        efectivoEsperado,
         montoEnCaja: montoContado,
         diferencia,
         notas: notas.trim() || null,
@@ -156,11 +180,19 @@ export default function SeccionCaja() {
   // Atajos de teclado
   useEffect(() => {
     const manejarKeyDown = (e) => {
+      if (modalMovimientoAbierto) return;
+
       if (cierreExitoso) {
         if (e.key === 'Enter' || e.key === 'Escape') {
           e.preventDefault();
           irASeccion(SECCIONES.VENTAS);
         }
+        return;
+      }
+
+      if (e.key === 'F8') {
+        e.preventDefault();
+        setModalMovimientoAbierto(true);
         return;
       }
 
@@ -178,7 +210,7 @@ export default function SeccionCaja() {
 
     window.addEventListener('keydown', manejarKeyDown);
     return () => window.removeEventListener('keydown', manejarKeyDown);
-  }, [cierreExitoso, ejecutarCierre, irASeccion]);
+  }, [cierreExitoso, ejecutarCierre, irASeccion, modalMovimientoAbierto]);
 
   if (cargando) {
     return (
@@ -245,6 +277,14 @@ export default function SeccionCaja() {
         <div className="flex items-center gap-3">
           <button
             type="button"
+            onClick={() => setModalMovimientoAbierto(true)}
+            className="bg-primario-700 hover:bg-primario-600 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2"
+          >
+            <kbd className="bg-primario-900 px-2 py-0.5 rounded text-white text-xs">F8</kbd>
+            Ingreso o Egreso
+          </button>
+          <button
+            type="button"
             onClick={() => irASeccion(SECCIONES.VENTAS)}
             className="bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
           >
@@ -260,9 +300,15 @@ export default function SeccionCaja() {
         </div>
       )}
 
+      {mensajeExito && (
+        <div className="mx-6 mt-4 p-3 bg-exito/10 border border-exito/30 rounded-xl text-exito text-sm font-medium shrink-0">
+          {mensajeExito}
+        </div>
+      )}
+
       {/* CONTENIDO PRINCIPAL */}
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        {/* TARJETAS DE TOTALES DEL SISTEMA */}
+        {/* TARJETAS DE TOTALES DEL SISTEMA (Sin textos secundarios debajo de los montos) */}
         <div>
           <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">
             Movimientos Registrados por el Sistema en este Turno
@@ -271,31 +317,58 @@ export default function SeccionCaja() {
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
               <span className="text-xs text-gray-400 uppercase font-medium block">Efectivo</span>
               <span className="text-2xl font-black text-white mt-1 block">{formatearPrecio(totalEfectivo)}</span>
-
             </div>
 
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
               <span className="text-xs text-gray-400 uppercase font-medium block">Tarjeta</span>
               <span className="text-2xl font-black text-white mt-1 block">{formatearPrecio(totalTarjeta)}</span>
-
             </div>
 
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
               <span className="text-xs text-gray-400 uppercase font-medium block">Transferencia</span>
               <span className="text-2xl font-black text-white mt-1 block">{formatearPrecio(totalTransferencia)}</span>
-
             </div>
 
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
               <span className="text-xs text-gray-400 uppercase font-medium block">Cuenta Corriente</span>
               <span className="text-2xl font-black text-white mt-1 block">{formatearPrecio(totalFiado)}</span>
-
             </div>
 
             <div className="bg-primario-900/40 border border-primario-500/50 rounded-xl p-4">
-              <span className="text-xs text-primario-300 uppercase font-bold block">Total General</span>
+              <span className="text-xs text-primario-300 uppercase font-bold block">Total Facturado</span>
               <span className="text-2xl font-black text-primario-300 mt-1 block">{formatearPrecio(totalGeneral)}</span>
-              <span className="text-xs text-primario-400 mt-1 block">{totalComprobantes} comprobantes emitidos</span>
+            </div>
+          </div>
+        </div>
+
+        {/* DESGLOSE DE FLUJO DE CAJA CHICA */}
+        <div className="bg-gray-800/90 border border-gray-700 rounded-xl p-5">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-6 flex-wrap">
+              <div>
+                <span className="text-xs text-gray-400 block font-bold uppercase">Apertura Inicial</span>
+                <span className="text-xl font-black text-white mt-0.5 block">{formatearPrecio(montoInicial)}</span>
+              </div>
+              <span className="text-gray-500 font-bold text-lg">+</span>
+              <div>
+                <span className="text-xs text-gray-400 block font-bold uppercase">Ventas Efectivo</span>
+                <span className="text-xl font-black text-white mt-0.5 block">{formatearPrecio(totalEfectivo)}</span>
+              </div>
+              <span className="text-gray-500 font-bold text-lg">+</span>
+              <div>
+                <span className="text-xs text-gray-400 block font-bold uppercase">Ingresos Manuales</span>
+                <span className="text-xl font-black text-exito mt-0.5 block">+{formatearPrecio(totalIngresos)}</span>
+              </div>
+              <span className="text-gray-500 font-bold text-lg">-</span>
+              <div>
+                <span className="text-xs text-gray-400 block font-bold uppercase">Egresos o Retiros</span>
+                <span className="text-xl font-black text-peligro mt-0.5 block">-{formatearPrecio(totalEgresos)}</span>
+              </div>
+            </div>
+
+            <div className="text-right border-l border-gray-700 pl-6">
+              <span className="text-xs text-primario-400 block font-bold uppercase">Efectivo Esperado en Gaveta</span>
+              <span className="text-3xl font-black text-primario-300 mt-0.5 block">{formatearPrecio(efectivoEsperado)}</span>
             </div>
           </div>
         </div>
@@ -344,7 +417,7 @@ export default function SeccionCaja() {
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium">
                     {!hayMontoIngresado
-                      ? 'Ingrese el monto para calcular la diferencia'
+                      ? 'Ingrese el monto para calcular la diferencia contra el efectivo esperado'
                       : Math.abs(diferencia) < 0.01
                         ? 'Caja exacta sin diferencias'
                         : diferencia > 0
@@ -397,6 +470,18 @@ export default function SeccionCaja() {
           </div>
         </div>
       </div>
+
+      {/* MODAL INGRESO Y EGRESO DE EFECTIVO */}
+      {modalMovimientoAbierto && (
+        <ModalMovimientoCaja
+          alConfirmar={({ tipo, monto }) => {
+            setModalMovimientoAbierto(false);
+            setMensajeExito(`Movimiento de ${tipo === 'egreso' ? 'egreso' : 'ingreso'} por ${formatearPrecio(monto)} registrado con éxito`);
+            cargarResumenTurno();
+          }}
+          alCerrar={() => setModalMovimientoAbierto(false)}
+        />
+      )}
     </div>
   );
 }

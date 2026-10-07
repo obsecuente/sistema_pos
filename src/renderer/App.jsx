@@ -20,6 +20,8 @@ import SeccionCaja from './componentes/SeccionCaja';
 import SeccionReportes from './componentes/SeccionReportes';
 import ModalCobro from './componentes/ModalCobro';
 import ModalCliente from './componentes/ModalCliente';
+import ModalAperturaCaja from './componentes/ModalAperturaCaja';
+import ModalMovimientoCaja from './componentes/ModalMovimientoCaja';
 
 // Rubros Rápidos (Códigos 1, 2, 3, 4, 5)
 const RUBROS_RAPIDOS = {
@@ -298,6 +300,7 @@ function ContenidoVenta() {
   const [confirmandoAnular, setConfirmandoAnular] = useState(false);
   const [mostrandoCobro, setMostrandoCobro] = useState(false);
   const [mostrandoFiadoCliente, setMostrandoFiadoCliente] = useState(false);
+  const [mostrandoMovimientoCaja, setMostrandoMovimientoCaja] = useState(false);
 
   // Ref temporal para pasar el pago de efectivo hacia el modal cliente
   const cobroPendienteRef = useRef(null);
@@ -465,15 +468,21 @@ function ContenidoVenta() {
 
   useEffect(() => {
     const manejarAtajosVenta = (e) => {
-      if (e.key === 'F3') { e.preventDefault(); iniciarCobro(); }
-      else if (e.key === 'F5') {
+      if (mostrandoMovimientoCaja || mostrandoCobro || mostrandoFiadoCliente) return;
+
+      if (e.key === 'F6') { e.preventDefault(); iniciarCobro(); }
+      else if (e.key === 'F7') {
         e.preventDefault();
         if (pestanaActiva && pestanaActiva.items.length > 0) setConfirmandoAnular(true);
+      }
+      else if (e.key === 'F8') {
+        e.preventDefault();
+        setMostrandoMovimientoCaja(true);
       }
     };
     document.addEventListener('keydown', manejarAtajosVenta);
     return () => document.removeEventListener('keydown', manejarAtajosVenta);
-  }, [pestanaActiva]);
+  }, [pestanaActiva, mostrandoMovimientoCaja, mostrandoCobro, mostrandoFiadoCliente]);
 
   if (!pestanaActiva) return null;
 
@@ -545,6 +554,21 @@ function ContenidoVenta() {
         />
       )}
 
+      {mostrandoMovimientoCaja && (
+        <ModalMovimientoCaja
+          alConfirmar={({ tipo, monto }) => {
+            setMostrandoMovimientoCaja(false);
+            setMensajeExito(`Movimiento de ${tipo === 'egreso' ? 'egreso' : 'ingreso'} por $${monto.toFixed(2)} registrado con éxito`);
+            setTimeout(() => setMensajeExito(''), 3000);
+            enfocarInput();
+          }}
+          alCerrar={() => {
+            setMostrandoMovimientoCaja(false);
+            enfocarInput();
+          }}
+        />
+      )}
+
       <div className="flex-1 flex flex-col p-4">
         <div className="mb-4">
           <div className="relative">
@@ -553,7 +577,7 @@ function ContenidoVenta() {
               onChange={(e) => setCodigoInput(e.target.value)}
               onKeyDown={manejarKeyDown}
               className="w-full bg-gray-800 border-2 border-primario-600 rounded-lg px-4 py-3 text-lg text-white focus:border-primario-400 focus:outline-none focus:ring-2 focus:ring-primario-400/30 placeholder:text-gray-500"
-              placeholder="Escanear producto, tipear código, o rubro (1, 2, 3, 4)..."
+              placeholder="Escanear producto, tipear código, o rubro 1, 2, 3, 4..."
               autoComplete="off" spellCheck="false"
             />
             {buscando && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm animate-pulse">Buscando...</span>}
@@ -637,12 +661,20 @@ function ContenidoVenta() {
           </div>
           <div className="space-y-1.5 text-xs text-gray-400 mt-4">
             <p className="font-bold text-gray-300 mb-1 border-b border-gray-700 pb-1">Atajos rápidos:</p>
-            <p><kbd className="bg-gray-700 px-1.5 py-0.5 rounded text-white font-mono">F3</kbd> Cobrar Venta</p>
-            <p><kbd className="bg-gray-700 px-1.5 py-0.5 rounded text-white font-mono">F5</kbd> Anular Venta</p>
-            <p><kbd className="bg-gray-700 px-1.5 py-0.5 rounded text-white font-mono">F4</kbd> Buscar Producto</p>
+            <p><kbd className="bg-gray-700 px-1.5 py-0.5 rounded text-white font-mono">F6</kbd> Cobrar Venta</p>
+            <p><kbd className="bg-gray-700 px-1.5 py-0.5 rounded text-white font-mono">F7</kbd> Anular Venta</p>
+            <p><kbd className="bg-gray-700 px-1.5 py-0.5 rounded text-white font-mono">F8</kbd> Movimiento de Caja</p>
             <p><kbd className="bg-gray-700 px-1.5 py-0.5 rounded text-white font-mono">SUPR</kbd> Restar item</p>
             <p><kbd className="bg-gray-700 px-1.5 py-0.5 rounded text-white font-mono">ENTER</kbd> Editar cant./precio</p>
           </div>
+          <button
+            type="button"
+            onClick={() => setMostrandoMovimientoCaja(true)}
+            className="w-full mt-3 bg-gray-700 hover:bg-gray-600 text-white py-2 px-3 rounded-lg text-xs font-bold transition-colors flex items-center justify-between border border-gray-600"
+          >
+            <span>Movimiento de Caja</span>
+            <kbd className="bg-gray-800 px-1.5 py-0.5 rounded text-white font-mono">F8</kbd>
+          </button>
         </div>
       </div>
     </div>
@@ -693,7 +725,7 @@ function BarraEstado() {
         </span>
       </div>
       <div className="flex items-center gap-4">
-        {usuarioActual && <span>{usuarioActual.nombreUsuario} ({usuarioActual.rol})</span>}
+        {usuarioActual && <span>{usuarioActual.nombreUsuario} - {usuarioActual.rol}</span>}
         <span className="text-gray-600">El Rincón del Gato v1.0.0</span>
       </div>
     </div>
@@ -707,7 +739,33 @@ export default function App() {
   const seccionActiva = useTiendaApp((s) => s.seccionActiva);
   const setEstadoEnergia = useTiendaApp((s) => s.setEstadoEnergia);
   const forzarGuardado = useTiendaVentas((s) => s.forzarGuardado);
+  const [turnoAbierto, setTurnoAbierto] = useState(true);
   useAtajosTeclado();
+
+  const verificarEstadoCaja = useCallback(async () => {
+    if (window.api?.caja?.estadoTurno) {
+      try {
+        const st = await window.api.caja.estadoTurno();
+        if (st && st.cajaAbierta === false) {
+          setTurnoAbierto(false);
+        } else {
+          setTurnoAbierto(true);
+        }
+      } catch (err) {
+        console.warn('Error verificando estado de caja:', err);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    verificarEstadoCaja();
+  }, [verificarEstadoCaja]);
+
+  useEffect(() => {
+    if (seccionActiva === SECCIONES.VENTAS) {
+      verificarEstadoCaja();
+    }
+  }, [seccionActiva, verificarEstadoCaja]);
 
   useEffect(() => {
     if (!window.api?.alCambiarEnergia) return;
@@ -742,9 +800,9 @@ export default function App() {
           {[
             { seccion: SECCIONES.VENTAS, label: 'Ventas', tecla: 'F1' },
             { seccion: SECCIONES.CUENTAS_CORRIENTES, label: 'Cuentas', tecla: 'F2' },
-            { seccion: SECCIONES.PRODUCTOS, label: 'Productos', tecla: 'F4' },
-            { seccion: SECCIONES.CIERRE_CAJA, label: 'Caja', tecla: 'F9' },
-            { seccion: SECCIONES.REPORTES, label: 'Reportes', tecla: 'F10' },
+            { seccion: SECCIONES.PRODUCTOS, label: 'Productos', tecla: 'F3' },
+            { seccion: SECCIONES.CIERRE_CAJA, label: 'Caja', tecla: 'F4' },
+            { seccion: SECCIONES.REPORTES, label: 'Reportes', tecla: 'F5' },
           ].map(({ seccion, label, tecla }) => (
             <button key={seccion} onClick={() => useTiendaApp.getState().irASeccion(seccion)}
               className={`px-3 py-1.5 rounded transition-colors ${seccionActiva === seccion ? 'bg-primario-700 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
@@ -756,6 +814,14 @@ export default function App() {
       </div>
       <main className="flex-1 flex flex-col overflow-hidden">{renderizarSeccion()}</main>
       <BarraEstado />
+
+      {!turnoAbierto && (
+        <ModalAperturaCaja
+          alConfirmar={() => {
+            setTurnoAbierto(true);
+          }}
+        />
+      )}
     </div>
   );
 }

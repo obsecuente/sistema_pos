@@ -38,6 +38,10 @@ const CANALES = Object.freeze({
   CAJA_ULTIMO_CIERRE:         'caja:ultimo-cierre',
   CAJA_RESUMEN_TURNO:         'caja:resumen-turno',
   CAJA_OBTENER_HISTORIAL:     'caja:obtener-historial',
+  CAJA_ESTADO_TURNO:          'caja:estado-turno',
+  CAJA_ABRIR_TURNO:           'caja:abrir-turno',
+  CAJA_REGISTRAR_MOVIMIENTO:  'caja:registrar-movimiento',
+  CAJA_OBTENER_MOVIMIENTOS:   'caja:obtener-movimientos',
 
   // ─── Reportes ───
   REPORTES_CARTERA_CUENTAS:   'reportes:cartera-cuentas',

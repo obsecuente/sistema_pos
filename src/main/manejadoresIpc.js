@@ -294,13 +294,14 @@ function registrarManejadoresIpc() {
       const total = subtotal + montoRecargo;
 
       // 1. Insertar cabecera de venta
+      const medioPagoNormalizado = datosVenta.medioPago === 'billetera' ? 'transferencia' : datosVenta.medioPago;
       const [resultadoVenta] = await con.execute(
         `INSERT INTO ventas (usuario_id, cliente_id, medio_pago, porcentaje_recargo, subtotal, total)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [
           datosVenta.usuarioId,
           datosVenta.clienteId || null,
-          datosVenta.medioPago,
+          medioPagoNormalizado,
           datosVenta.porcentajeRecargo || 0,
           subtotal,
           total,
@@ -442,8 +443,12 @@ function registrarManejadoresIpc() {
       parametros.push(`${fechaHasta} 23:59:59`);
     }
     if (medioPago && medioPago !== 'todos') {
-      condiciones.push('v.medio_pago = ?');
-      parametros.push(medioPago);
+      if (medioPago === 'transferencia' || medioPago === 'billetera') {
+        condiciones.push("v.medio_pago IN ('transferencia', 'billetera')");
+      } else {
+        condiciones.push('v.medio_pago = ?');
+        parametros.push(medioPago);
+      }
     }
     if (busqueda && busqueda.trim()) {
       const b = `%${busqueda.trim()}%`;
@@ -485,7 +490,7 @@ function registrarManejadoresIpc() {
          COALESCE(SUM(CASE WHEN v.estado = 'completada' THEN v.total ELSE 0 END), 0) AS totalFacturado,
          COALESCE(SUM(CASE WHEN v.estado = 'completada' AND v.medio_pago = 'efectivo' THEN v.total ELSE 0 END), 0) AS totalEfectivo,
          COALESCE(SUM(CASE WHEN v.estado = 'completada' AND v.medio_pago = 'tarjeta' THEN v.total ELSE 0 END), 0) AS totalTarjeta,
-         COALESCE(SUM(CASE WHEN v.estado = 'completada' AND v.medio_pago = 'transferencia' THEN v.total ELSE 0 END), 0) AS totalTransferencia,
+         COALESCE(SUM(CASE WHEN v.estado = 'completada' AND v.medio_pago IN ('transferencia', 'billetera') THEN v.total ELSE 0 END), 0) AS totalTransferencia,
          COALESCE(SUM(CASE WHEN v.estado = 'completada' AND v.medio_pago = 'cuenta_corriente' THEN v.total ELSE 0 END), 0) AS totalCuentaCorriente,
          COALESCE(SUM(CASE WHEN v.estado = 'anulada' THEN v.total ELSE 0 END), 0) AS totalAnulado
        FROM ventas v
@@ -759,6 +764,98 @@ function registrarManejadoresIpc() {
 
   // ─── CAJA ──────────────────────────────────────────────────────────
 
+  ipcMain.handle(CANALES.CAJA_ESTADO_TURNO, async () => {
+    // 1. Obtener fecha del último cierre de caja
+    const cierres = await consultar(
+      `SELECT periodo_hasta FROM cierres_caja ORDER BY id DESC LIMIT 1`
+    );
+    const desde = cierres.length > 0 ? cierres[0].periodo_hasta : '2000-01-01 00:00:00';
+
+    // 2. Verificar si hay apertura posterior al último cierre
+    const aperturas = await consultar(
+      `SELECT * FROM movimientos_caja WHERE tipo = 'apertura' AND creado_en > ? ORDER BY id DESC LIMIT 1`,
+      [desde]
+    );
+
+    const cajaAbierta = aperturas.length > 0;
+    const montoInicial = cajaAbierta ? parseFloat(aperturas[0].monto || 0) : 0;
+    const aperturaFecha = cajaAbierta ? aperturas[0].creado_en : desde;
+
+    // 3. Totales de ingresos y egresos del turno
+    const [totalesMov] = await consultar(
+      `SELECT
+         COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE 0 END), 0) AS totalIngresos,
+         COALESCE(SUM(CASE WHEN tipo = 'egreso' THEN monto ELSE 0 END), 0) AS totalEgresos
+       FROM movimientos_caja
+       WHERE creado_en > ?`,
+      [desde]
+    );
+
+    return {
+      cajaAbierta,
+      montoInicial,
+      totalIngresos: parseFloat(totalesMov?.totalIngresos || 0),
+      totalEgresos: parseFloat(totalesMov?.totalEgresos || 0),
+      desde: aperturaFecha,
+    };
+  });
+
+  ipcMain.handle(CANALES.CAJA_ABRIR_TURNO, async (_evento, { montoInicial = 0, usuarioId = 1 } = {}) => {
+    const res = await consultar(
+      `INSERT INTO movimientos_caja (usuario_id, tipo, monto, motivo) VALUES (?, 'apertura', ?, 'Monto inicial de apertura')`,
+      [usuarioId, parseFloat(montoInicial || 0)]
+    );
+    return { exito: true, id: res.insertId, montoInicial: parseFloat(montoInicial || 0) };
+  });
+
+  ipcMain.handle(CANALES.CAJA_REGISTRAR_MOVIMIENTO, async (_evento, { tipo, monto, motivo = null, usuarioId = 1 }) => {
+    if (!['ingreso', 'egreso'].includes(tipo)) {
+      return { exito: false, error: 'Tipo de movimiento inválido. Debe ser ingreso o egreso.' };
+    }
+    const montoNum = parseFloat(monto || 0);
+    if (isNaN(montoNum) || montoNum <= 0) {
+      return { exito: false, error: 'El monto debe ser mayor a cero.' };
+    }
+
+    const res = await consultar(
+      `INSERT INTO movimientos_caja (usuario_id, tipo, monto, motivo) VALUES (?, ?, ?, ?)`,
+      [usuarioId, tipo, montoNum, motivo ? motivo.trim() : null]
+    );
+
+    // Enviar impresión de ticket de movimiento de caja chica a la impresora térmica
+    const fechaHora = new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+    enviarAWorker({
+      tipo: 'imprimir-ticket',
+      datos: {
+        tipo: 'movimiento_caja',
+        tipoMovimiento: tipo,
+        monto: montoNum,
+        motivo: motivo ? motivo.trim() : (tipo === 'ingreso' ? 'Ingreso de efectivo' : 'Retiro de efectivo'),
+        fecha: fechaHora,
+      }
+    }).catch(err => console.warn('[Caja] Error al imprimir comprobante de movimiento:', err));
+
+    return { exito: true, id: res.insertId };
+  });
+
+  ipcMain.handle(CANALES.CAJA_OBTENER_MOVIMIENTOS, async (_evento, { desde } = {}) => {
+    const cierres = await consultar(
+      `SELECT periodo_hasta FROM cierres_caja ORDER BY id DESC LIMIT 1`
+    );
+    const fechaDesde = desde || (cierres.length > 0 ? cierres[0].periodo_hasta : '2000-01-01 00:00:00');
+
+    const filas = await consultar(
+      `SELECT mc.*, u.nombre_usuario AS usuario_nombre
+       FROM movimientos_caja mc
+       LEFT JOIN usuarios u ON mc.usuario_id = u.id
+       WHERE mc.creado_en > ?
+       ORDER BY mc.id DESC`,
+      [fechaDesde]
+    );
+
+    return filas;
+  });
+
   ipcMain.handle(CANALES.CAJA_RESUMEN_TURNO, async () => {
     // Obtener el último cierre para saber desde cuándo contar
     const cierres = await consultar(
@@ -766,27 +863,52 @@ function registrarManejadoresIpc() {
     );
     const desde = cierres.length > 0 ? cierres[0].periodo_hasta : '2000-01-01 00:00:00';
 
+    // Obtener apertura, ingresos y egresos
+    const aperturas = await consultar(
+      `SELECT monto FROM movimientos_caja WHERE tipo = 'apertura' AND creado_en > ? ORDER BY id DESC LIMIT 1`,
+      [desde]
+    );
+    const montoInicial = aperturas.length > 0 ? parseFloat(aperturas[0].monto || 0) : 0;
+
+    const [totalesMov] = await consultar(
+      `SELECT
+         COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE 0 END), 0) AS totalIngresos,
+         COALESCE(SUM(CASE WHEN tipo = 'egreso' THEN monto ELSE 0 END), 0) AS totalEgresos
+       FROM movimientos_caja
+       WHERE creado_en > ?`,
+      [desde]
+    );
+    const totalIngresos = parseFloat(totalesMov?.totalIngresos || 0);
+    const totalEgresos = parseFloat(totalesMov?.totalEgresos || 0);
+
     const resumen = await consultar(
       `SELECT
-         medio_pago,
+         CASE WHEN medio_pago = 'billetera' THEN 'transferencia' ELSE medio_pago END AS medio_pago,
          COUNT(*) AS cantidad_ventas,
          SUM(total) AS total
        FROM ventas
        WHERE estado = 'completada'
          AND creado_en > ?
-       GROUP BY medio_pago`,
+       GROUP BY CASE WHEN medio_pago = 'billetera' THEN 'transferencia' ELSE medio_pago END`,
       [desde]
     );
 
-    return { desde, resumen };
+    return {
+      desde,
+      resumen,
+      montoInicial,
+      totalIngresos,
+      totalEgresos,
+    };
   });
 
   ipcMain.handle(CANALES.CAJA_CERRAR, async (_evento, datosCierre) => {
     const resultado = await consultar(
       `INSERT INTO cierres_caja (usuario_id, total_efectivo, total_tarjeta,
                                  total_transferencia, total_fiado, monto_en_caja,
-                                 diferencia, notas, periodo_desde, periodo_hasta)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+                                 diferencia, monto_inicial, total_ingresos, total_egresos,
+                                 notas, periodo_desde, periodo_hasta)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
       [
         datosCierre.usuarioId,
         datosCierre.totalEfectivo || 0,
@@ -795,6 +917,9 @@ function registrarManejadoresIpc() {
         datosCierre.totalFiado || 0,
         datosCierre.montoEnCaja || 0,
         datosCierre.diferencia || 0,
+        datosCierre.montoInicial || 0,
+        datosCierre.totalIngresos || 0,
+        datosCierre.totalEgresos || 0,
         datosCierre.notas || null,
         datosCierre.periodoDesde,
       ]
